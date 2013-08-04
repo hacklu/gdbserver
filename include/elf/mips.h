@@ -155,6 +155,7 @@ START_RELOC_NUMBERS (elf_mips_reloc_type)
      mips-linux for exception-handling data.  GCC stopped using it in
      May, 2004, then started using it again for compact unwind tables.  */
   RELOC_NUMBER (R_MIPS_PC32, 248)
+  RELOC_NUMBER (R_MIPS_EH, 249)
   /* FIXME: this relocation is used internally by gas.  */
   RELOC_NUMBER (R_MIPS_GNU_REL16_S2, 250)
   /* These are GNU extensions to enable C++ vtable garbage collection.  */
@@ -810,7 +811,10 @@ extern void bfd_mips_elf32_swap_reginfo_out
    although MIPS16 symbols are never considered to be MIPS_PIC.  */
 #define STO_MIPS_PIC		0x20
 #define ELF_ST_IS_MIPS_PIC(other) (((other) & STO_MIPS_FLAGS) == STO_MIPS_PIC)
-#define ELF_ST_SET_MIPS_PIC(other) (((other) & ~STO_MIPS_FLAGS) | STO_MIPS_PIC)
+#define ELF_ST_SET_MIPS_PIC(other)					\
+  ((ELF_ST_IS_MIPS16 (other)						\
+    ? ((other) & ~(STO_MIPS16 | STO_MIPS_FLAGS))			\
+    : ((other) & ~STO_MIPS_FLAGS)) | STO_MIPS_PIC)
 
 /* This value is used for a mips16 .text symbol.  */
 #define STO_MIPS16		0xf0

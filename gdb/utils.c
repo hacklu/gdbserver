@@ -713,6 +713,7 @@ internal_vproblem (struct internal_problem *problem,
   int quit_p;
   int dump_core_p;
   char *reason;
+  struct cleanup *cleanup = make_cleanup (null_cleanup, NULL);
 
   /* Don't allow infinite error/warning recursion.  */
   {
@@ -821,6 +822,7 @@ internal_vproblem (struct internal_problem *problem,
     }
 
   dejavu = 0;
+  do_cleanups (cleanup);
 }
 
 static struct internal_problem internal_error_problem = {
@@ -1125,16 +1127,15 @@ get_regcomp_error (int code, regex_t *rx)
 }
 
 /* Compile a regexp and throw an exception on error.  This returns a
-   cleanup to free the resulting pattern on success.  If RX is NULL,
-   this does nothing and returns NULL.  */
+   cleanup to free the resulting pattern on success.  RX must not be
+   NULL.  */
 
 struct cleanup *
 compile_rx_or_error (regex_t *pattern, const char *rx, const char *message)
 {
   int code;
 
-  if (!rx)
-    return NULL;
+  gdb_assert (rx != NULL);
 
   code = regcomp (pattern, rx, REG_NOSUB);
   if (code != 0)
@@ -3231,6 +3232,23 @@ align_down (ULONGEST v, int n)
   /* Check that N is really a power of two.  */
   gdb_assert (n && (n & (n-1)) == 0);
   return (v & -n);
+}
+
+/* See utils.h.  */
+
+LONGEST
+gdb_sign_extend (LONGEST value, int bit)
+{
+  gdb_assert (bit >= 1 && bit <= 8 * sizeof (LONGEST));
+
+  if (((value >> (bit - 1)) & 1) != 0)
+    {
+      LONGEST signbit = ((LONGEST) 1) << (bit - 1);
+
+      value = (value ^ signbit) - signbit;
+    }
+
+  return value;
 }
 
 /* Allocation function for the libiberty hash table which uses an

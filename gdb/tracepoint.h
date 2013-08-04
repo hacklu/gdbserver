@@ -357,7 +357,7 @@ void free_actions (struct breakpoint *);
 
 extern const char *decode_agent_options (const char *exp, int *trace_string);
 
-extern void encode_actions (struct breakpoint *t, struct bp_location *tloc,
+extern void encode_actions (struct bp_location *tloc,
 			    char ***tdp_actions, char ***stepping_actions);
 
 extern void validate_actionline (const char *, struct breakpoint *);
@@ -389,6 +389,7 @@ extern void merge_uploaded_trace_state_variables (struct uploaded_tsv **utsvp);
 
 extern void query_if_trace_running (int from_tty);
 extern void disconnect_tracing (void);
+extern void trace_reset_local_state (void);
 
 extern void start_tracing (char *notes);
 extern void stop_tracing (char *notes);

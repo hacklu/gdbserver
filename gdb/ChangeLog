@@ -1,3 +1,725 @@
+2013-06-18  Doug Evans  <dje@google.com>
+
+	* dwarf2read.c (dw2_symtab_iter_next): Check value of cu_index
+	before using it.
+	(dw2_expand_symtabs_matching): Fix symbol kind validity check.
+	Move test of cu_index closer to use.  Print complaint if cu_index
+	is bad.
+
+2013-06-18  Joel Brobecker  <brobecker@adacore.com>
+
+	* machoread.c (oso_vector): Delete this global.
+	(macho_register_oso): Add new parameter "oso_vector_ptr".
+	Use it instead of the "oso_vector" global.
+	(macho_symtab_read, macho_symfile_read_all_oso): Likewise.
+	(macho_symfile_read): Use a local oso_vector, to be free'ed
+	at the end of this function, in place of the old "oso_vector"
+	global.  Update various function calls accordingly.  Use one
+	single cleanup chain for the entire function.
+
+2013-06-18  Joel Brobecker  <brobecker@adacore.com>
+
+	* dwarf2read.c (dwarf2_per_objfile_free): Replace uses of
+	DWARF2_PER_OBJFILE by uses of DATA instead.
+
+2013-06-18  Tom Tromey  <tromey@redhat.com>
+
+	* break-catch-sig.c (signal_catchpoint_explains_signal): Add 'sig'
+	argument.
+	* breakpoint.c (bpstat_explains_signal): Add 'sig' argument.
+	Special case signals other than GDB_SIGNAL_TRAP.
+	(explains_signal_watchpoint): New function.
+	(base_breakpoint_explains_signal): Add 'sig' argument.
+	(initialize_breakpoint_ops): Set 'explains_signal' method for
+	watchpoints.
+	* breakpoint.h (struct breakpoint_ops) <explains_signal>: Add
+	signal argument.
+	(bpstat_explains_signal): Likewise.
+	* infrun.c (handle_syscall_event, handle_inferior_event): Update.
+
+2013-06-18  Tom Tromey  <tromey@redhat.com>
+
+	* python/py-inferior.c (gdbpy_selected_inferior): Don't incref.
+
+2013-06-18  Tom Tromey  <tromey@redhat.com>
+
+	* python/python.c (finish_python_initialization): Decref
+	'pythondir' on failure path as well.
+
+2013-06-18  Tom Tromey  <tromey@redhat.com>
+
+	PR symtab/15391:
+	* dwarf2loc.c (read_pieced_value): Truncate this_size_bits
+	after taking bits_to_skip into account.  Sign extend byte_offset.
+	* utils.h (gdb_sign_extend): Declare.
+	* utils.c (gdb_sign_extend): New function.
+
+2013-06-18  Jan Kratochvil  <jan.kratochvil@redhat.com>
+
+	* dwarf2read.c (write_psymtabs_to_index): Ignore NULL PSYMTAB.
+
+2013-06-17  Pierre Muller  <muller@sourceware.org>
+
+	* corelow.c (core_open): Print GDB signal name instead of target
+	signal number.
+
+2013-06-17  Mike Frysinger  <vapier@gentoo.org>
+
+	* .gitignore: Add /gcore.
+
+2013-06-13  Doug Evans  <dje@google.com>
+
+	* dwarf2read.c (try_open_dwop_file): Work around behaviour of
+	OPF_TRY_CWD_FIRST to not search path if the file contains a '/'.
+
+2013-06-12  Phil Muldoon  <pmuldoon@redhat.com>
+
+	* stack.c (backtrace_command_1): Fix indentation.
+
+2013-06-11  Joel Brobecker  <brobecker@adacore.com>
+
+	* window-nat.c (thread_rec): Add missing empty line after
+	local variable declaration.
+
+2013-06-11  Joel Brobecker  <brobecker@adacore.com>
+
+	* windows-nat.c (thread_rec): Revert format used to print
+	error code returned by SuspendThread from %d back to %u.
+
+2013-06-11  Joel Brobecker  <brobecker@adacore.com>
+
+	* windows-nat.c (windows_continue): Add "0x" prefix for thread
+	ID in debug trace.
+	(get_windows_debug_event): Likewise, for all debug traces.
+
+2013-06-11  Joel Brobecker  <brobecker@adacore.com>
+
+	* window-nat.c (thread_rec): Add thread ID in SuspendThread
+	warning message.
+
+2013-06-08  Pedro Alves  <pedro@codesourcery.com>
+	    Yao Qi  <yao@codesourcery.com>
+
+	* mi/mi-main.c (get_register): Remove declaration.
+	(output_register): Declare.
+	(mi_cmd_data_list_register_values): Remove local variable
+	'tuple_cleanup'.  Move some code into output_register.
+	(get_register): Renamed to ...
+	(output_register): ... this.  Output the register's
+	"number" ui_out tuple here.
+
+2013-06-07  Pedro Alves  <palves@redhat.com>
+
+	* darwin-nat.c: Fix formating in copyright header.
+	* darwin-nat.h: Likewise.
+	* gnu-nat.c: Likewise.
+	* machoread.c: Likewise.
+
+2013-06-07  Pedro Alves  <palves@redhat.com>
+
+	PR server/14823
+	* regformats/regdat.sh: Output #include tdesc.h.  Make globals
+	static.  Output a global target description pointer.
+	(init_registers_${name}): Adjust to initialize a
+	target description structure.
+
+2013-06-07  Will Newton  <will.newton@linaro.org>
+
+	* printcmd.c (build_address_symbolic): Call
+	gdbarch_addr_bits_remove for text minimal symbols.
+
+2013-06-07  Will Newton  <will.newton@linaro.org>
+
+	* MAINTAINERS: Add myself to Write After Approval.
+
+2013-06-07  Yao Qi  <yao@codesourcery.com>
+
+	* tracepoint.c (start_tracing): Move code to ...
+	(trace_reset_local_state): ... here.  New.
+	(disconnect_tracing): Don't call set_current_traceframe,
+	set_tracepoint_num, and set_traceframe_context. Call
+	trace_reset_local_state instead.
+	(tfile_close): Call trace_reset_local_state.
+	* ctf.c (ctf_close): Likewise.
+	* remote.c (remote_close): Likewise.
+	* tracepoint.h (trace_reset_local_state): Declare.
+
+2013-06-06  Doug Evans  <dje@google.com>
+
+	* dwarf2read.c: Whitespace fixes for DWP file format documentation,
+	and fix header docs.
+
+2013-06-05  Doug Evans  <dje@google.com>
+	    Keith Seitz  <keiths@redhat.com>
+
+	PR 15519
+	* cp-namespace.c (find_symbol_in_baseclass): Call
+	cp_lookup_symbol_in_namespace instead of cp_lookup_symbol_namespace.
+	Check result of call to lookup_symbol_static.
+	Call lookup_static_symbol_aux unconditionally.
+	Call check_typedef on base types before accessing them.
+	(cp_lookup_nested_symbol): Fix comment.
+
+2013-06-05  Luis Machado  <lgustavo@codesourcery.com>
+
+	* gnu-v3-abi.c (gnuv3_skip_trampoline): Handle thunk
+	minimal symbols pointing to function descriptors.
+
+2013-06-05  Tom Tromey  <tromey@redhat.com>
+
+	* python/py-utils.c (gdb_pymodule_addobject): Cast away const.
+
+2013-06-04  Sergio Durigan Junior  <sergiodj@redhat.com>
+	    Pedro Alves  <palves@redhat.com>
+
+	* remote.c (remote_wait_as): Restore signal handler before returning
+	when GDB gets a notification.
+
+2013-06-04  Gary Benson  <gbenson@redhat.com>
+
+	PR 2328
+	* breakpoint.h (handle_solib_event): Moved function declaration
+	to solib.h.
+	* breakpoint.c (handle_solib_event): Moved function to solib.c.
+	(bpstat_stop_status): Pass new argument to handle_solib_event.
+	* solib.h (update_solib_breakpoints): New function declaration.
+	(handle_solib_event): Moved function declaration from
+	breakpoint.h.
+	* solib.c (update_solib_breakpoints): New function.
+	(handle_solib_event): Moved function from breakpoint.c.
+	Updated to call solib_ops->handle_event if not NULL.
+	* solist.h (target_so_ops): New fields "update_breakpoints" and
+	"handle_event".
+	* infrun.c (set_stop_on_solib_events): New function.
+	(_initialize_infrun): Use the above for "set
+	stop-on-solib-events".
+	(handle_inferior_event): Pass new argument to handle_solib_event.
+	* solib-svr4.c (probe.h): New include.
+	(svr4_free_library_list): New forward declaration.
+	(probe_action): New enum.
+	(probe_info): New struct.
+	(probe_info): New static variable.
+	(NUM_PROBES): New definition.
+	(svr4_info): New fields "using_xfer", "probes_table" and
+	"solib_list".
+	(free_probes_table): New function.
+	(free_solib_list): New function.
+	(svr4_pspace_data_cleanup): Free probes table and solib list.
+	(svr4_copy_library_list): New function.
+	(svr4_current_sos_via_xfer_libraries): New parameter "annex".
+	(svr4_read_so_list): New parameter "prev_lm".
+	(svr4_current_sos_direct): Renamed from "svr4_current_sos".
+	(svr4_current_sos): New function.
+	(probe_and_action): New struct.
+	(hash_probe_and_action): New function.
+	(equal_probe_and_action): Likewise.
+	(register_solib_event_probe): Likewise.
+	(solib_event_probe_at): Likewise.
+	(solib_event_probe_action): Likewise.
+	(solist_update_full): Likewise.
+	(solist_update_incremental): Likewise.
+	(disable_probes_interface_cleanup): Likewise.
+	(svr4_handle_solib_event): Likewise.
+	(svr4_update_solib_event_breakpoint): Likewise.
+	(svr4_update_solib_event_breakpoints): Likewise.
+	(svr4_create_solib_event_breakpoints): Likewise.
+	(enable_break): Free probes table before creating breakpoints.
+	Use svr4_create_solib_event_breakpoints to create breakpoints.
+	(svr4_solib_create_inferior_hook): Free the solib list.
+	(_initialize_svr4_solib): Initialise
+	svr4_so_ops.handle_solib_event and svr4_so_ops.update_breakpoints.
+
+2013-06-04  Gary Benson  <gbenson@redhat.com>
+
+	* target.h (target_ops): New field
+	"to_augmented_libraries_svr4_read".
+	(target_augmented_libraries_svr4_read): New macro.
+	* target.c (update_current_target): Handle
+	to_augmented_libraries_svr4_read.
+	* remote.c (remote_state): New field
+	"augmented_libraries_svr4_read".
+	(remote_augmented_libraries_svr4_read_feature): New function.
+	(remote_protocol_features): Add entry for
+	"augmented-libraries-svr4-read".
+	(remote_augmented_libraries_svr4_read): New function.
+	(init_remote_ops): Initialize
+	remote_ops.to_augmented_libraries_svr4_read.
+
+2013-06-04  Gary Benson  <gbenson@redhat.com>
+
+	* NEWS: Update.
+
+2013-06-04  Gary Benson  <gbenson@redhat.com>
+
+	* objfiles.h (inhibit_section_map_updates): New function
+	declaration.
+	(resume_section_map_updates): Likewise.
+	(resume_section_map_updates_cleanup): Likewise.
+	* objfiles.c (objfile_pspace_info): Removed field
+	"objfiles_changed_p".  New fields "new_objfiles_available",
+	"section_map_dirty" and "inhibit_updates".
+	(allocate_objfile): Set new_objfiles_available.
+	(free_objfile): Set section_map_dirty.
+	(objfile_relocate1): Likewise.
+	(in_plt_section): Likewise.
+	(find_pc_section): Update the conditions under which the
+	section map will be updated.
+	(inhibit_section_map_updates): New function.
+	(resume_section_map_updates): Likewise.
+	(resume_section_map_updates_cleanup): Likewise.
+
+2013-06-04  Gary Benson  <gbenson@redhat.com>
+
+	* probe.h (get_probe_argument_count): New declaration.
+	(evaluate_probe_argument): Likewise.
+	* probe.c (get_probe_argument_count): New function.
+	(evaluate_probe_argument): Likewise.
+	(probe_safe_evaluate_at_pc): Use the above new functions.
+
+2013-06-04  Alan Modra  <amodra@gmail.com>
+
+	* ppc-tdep.h (ppc_insns_match_pattern): Update prototype.
+	* rs6000-tdep.c (read_insn): Add frame param, don't assume big-endian.
+	(ppc_insns_match_pattern): Add frame param.  Avoid multiple
+	target mem reads on optional insns.
+	* ppc-linux-tdep.c (ppc_skip_trampoline_code): Update
+	ppc_insns_match_pattern calls.
+	* ppc64-tdep.c (ppc64_standard_linkage2, ppc64_standard_linkage3):
+	Add match for power7 thread safety insns, and new order of
+	std 2,40(1) insn.  Correct code shown for _dl_runtime_resolve
+	invocation in comment, and update rest of comment.
+	(PPC64_STANDARD_LINKAGE1_LEN, PPC64_STANDARD_LINKAGE2_LEN,
+	PPC64_STANDARD_LINKAGE3_LEN): Delete.
+	(ppc64_standard_linkage2_target): Update insn offsets.
+	(ppc64_skip_trampoline_code): Use a single insn buffer.  Match newer
+	stubs first.  Update calls.
+
+2013-06-04  Yao Qi  <yao@codesourcery.com>
+
+	* solib.c (solib_find): Don't need dir separator if path has
+	drive spec.
+
+2013-06-03  Joel Brobecker  <brobecker@adacore.com>
+
+	Revert (indirectly causes a SIGSEGV):
+	* machoread.c (macho_symfile_read): Assign first cleanup to
+	'back_to'.
+
+2013-06-03  Yao Qi  <yao@codesourcery.com>
+
+	* mi/mi-cmd-var.c (mi_no_values, mi_simple_values): Move to
+	mi-parse.c.  Make them static.
+	(mi_all_values): Likewise.
+	(mi_parse_values_option): Move to mi-parse.c.  Rename it to
+	mi_parse_print_values.  Make it external.
+	* mi/mi-cmds.h (mi_no_values, mi_simple_values, mi_all_values):
+	Remove the declarations.
+	* mi/mi-parse.c (mi_parse_print_values): Moved from mi-cmd-var.c.
+	* mi/mi-parse.h (mi_parse_print_values): Declare.
+	* mi/mi-cmd-stack.c: Include mi-parse.h.
+	(parse_print_values): Remove
+	(mi_cmd_stack_list_locals): Call mi_parse_print_values instead
+	of parse_print_values.
+	(mi_cmd_stack_list_args, mi_cmd_stack_list_variables): Likewise.
+
+2013-05-31  Pedro Alves  <pedro@codesourcery.com>
+	    Yao Qi  <yao@codesourcery.com>
+
+	* tracepoint.c (all_tracepoint_actions_and_cleanup): Declare.
+	(encode_actions): Move code to ...
+	(all_tracepoint_actions_and_cleanup): ... here.  New.
+	(trace_dump_command): Likewise.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* symmisc.c (maintenance_expand_symtabs): Call do_cleanups.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* xml-support.c (gdb_xml_create_parser_and_cleanup): Rename from
+	gdb_xml_create_parser_and_cleanup_1.  Return a cleanup.  Remove
+	'old_chain' argument.  Add 'parser_result' argument.
+	(gdb_xml_create_parser_and_cleanup): Remove old version.
+	(gdb_xml_parse_quick): Update.
+	(xml_process_xincludes): Update.
+	* xml-support.h (gdb_xml_create_parser_and_cleanup): Don't
+	declare.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* probe.c (collect_probes): Check arguments for NULL before
+	calling compile_rx_or_error.
+	* utils.c (compile_rx_or_error): Require 'rx' to be non-NULL.
+	Remove NULL return.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* infrun.c (adjust_pc_after_break): Introduce an outer null
+	cleanup.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* mi/mi-cmd-var.c (varobj_update_one): Add an outer null cleanup.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* cli/cli-script.c (read_command_lines_1): Use a null cleanup
+	for 'old_chain'.  Do not check 'head' before processing
+	cleanups.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* mi/mi-cmd-stack.c (list_arg_or_local): Remove
+	"cleanup_tuple".
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* dbxread.c (dbx_read_symtab): Declare 'back_to' in a more
+	inner scope.  Unconditionally call do_cleanups.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* source.c (find_and_open_source): Call do_cleanups.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* linux-thread-db.c (thread_db_load_search): Unconditionally
+	call do_cleanups.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* solib-aix.c (solib_aix_bfd_open): Don't use a null cleanup
+	for 'cleanup'; instead use a later one.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* python/py-breakpoint.c (bppy_get_commands): Use
+	explicit, unconditional return.
+	* python/py-frame.c (frapy_read_var): Likewise.
+	* python/python.c (gdbpy_decode_line): Likewise.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* cp-namespace.c (cp_lookup_symbol_imports_or_template): Call
+	do_cleanups on all return paths.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* top.c (execute_command): Discard 'cleanup_if_error' cleanups.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* stabsread.c (read_struct_type): Call do_cleanups along
+	all return paths.
+
+2013-05-30  Maciej W. Rozycki  <macro@codesourcery.com>
+
+	* mips-linux-tdep.c: Adjust formatting throughout.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* mipsread.c (read_alphacoff_dynamic_symtab): Call do_cleanups
+	along all return paths.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* symfile.c (find_separate_debug_file): Call do_cleanups
+	along all return paths.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* symtab.c (search_symbols): Introduce a null cleanup for
+	'retval_chain'.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* python/py-value.c (valpy_binop): Call do_cleanups before
+	exiting loop.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* python/py-prettyprint.c (print_children): Remove extra
+	do_cleanups call.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* python/py-frame.c (frapy_read_var): Call do_cleanups along
+	all return paths.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* python/py-breakpoint.c (bppy_get_commands): Call do_cleanups
+	along all return paths.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* cli/cli-logging.c (set_logging_redirect): Unconditionally
+	call do_cleanups.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* varobj.c (c_value_of_root): Call do_cleanups along all
+	return paths.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* tracepoint.c (trace_dump_command): Unconditionally call
+	do_cleanups.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* breakpoint.c (output_thread_groups, parse_cmd_to_aexpr): Call
+	do_cleanups earlier.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* machoread.c (macho_symfile_read): Assign first cleanup to
+	'back_to'.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* m32r-rom.c (m32r_load): Call do_cleanups at all returns.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* mi/mi-main.c (list_available_thread_groups): Call do_cleanups.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* inf-ptrace.c (inf_ptrace_create_inferior): Unconditionally
+	call discard_cleanups.
+	(inf_ptrace_attach): Likewise.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* remote-mips.c (mips_exit_debug): Call do_cleanups on all
+	return paths.
+	(mips_initialize): Likewise.
+	(common_open): Call do_cleanups.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* utils.c (internal_vproblem): Call do_cleanups.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* linespec.c (find_linespec_symbols): Don't reassign to 'cleanup'.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* cli/cli-script.c (setup_user_args): Don't return after error.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* somread.c (som_symtab_read): Call do_cleanups.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* printcmd.c (print_command_1): Unconditionally call do_cleanups.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* cli/cli-cmds.c (cd_command, alias_command): Call do_cleanups.
+	* cli/cli-dump.c (restore_binary_file): Call do_cleanups.
+	* interps.c (interpreter_exec_cmd): Call do_cleanups.
+	* source.c (show_substitute_path_command): Call do_cleanups.
+	(unset_substitute_path_command, set_substitute_path_command):
+	Likewise.
+	* symfile.c (load_command): Call do_cleanups.
+
+2013-05-30  Tom Tromey  <tromey@redhat.com>
+
+	* contrib/cleanup_check.py: New file.
+	* contrib/gcc-with-excheck: Add option parsing.
+
+2013-05-30  Joel Brobecker  <brobecker@adacore.com>
+
+	* windows-nat.c (windows_delete_thread): Add missing space
+	in cast expression.
+
+2013-05-30  Hafiz Abid Qadeer  <abidh@codesourcery.com>
+
+	* inferior.c (top level): Include tilde.h.
+	(add_inferior_command): Call tilde_expand on the value of 'exec'
+	argument.
+
+2013-05-30  Pedro Alves  <pedro@codesourcery.com>
+	    Yao Qi  <yao@codesourcery.com>
+
+	* tracepoint.c (encode_actions_1): Remove parameter 't'.
+	Caller update.
+	(encode_actions): Likewise.
+	* remote.c (remote_download_tracepoint): Caller update.
+	* tracepoint.h (encode_actions): Update declaration.
+
+2013-05-30  Pedro Alves  <palves@redhat.com>
+
+	* python/python-internal.h (gdb_Py_DECREF): Cast OP to PyObject
+	pointer.
+
+2013-05-30  Yao Qi  <yao@codesourcery.com>
+
+	* remote.c (remote_check_symbols): Remove unused parameter
+	'objfile'.
+	Declaration update.
+	(remote_start_remote, remote_new_objfile): Caller update.
+
+2013-05-30  Yao Qi  <yao@codesourcery.com>
+
+	* mi/mi-cmds.c (mi_cmds): Define MI command
+	'-exec-arguments' by macro DEF_MI_CMD_CLI_1 instead of
+	DEF_MI_CMD_CLI.
+
+2013-05-29  Pedro Alves  <palves@redhat.com>
+
+	* remote.c (remote_insert_breakpoint, remote_remove_breakpoint)
+	(remote_insert_watchpoint, remote_remove_watchpoint)
+	(remote_insert_hw_breakpoint, remote_remove_hw_breakpoint)
+	(remote_verify_memory, compare_sections_command)
+	(remote_search_memory): Set the general process/thread on the
+	remote side.
+
+2013-05-29  Pedro Alves  <palves@redhat.com>
+
+	* aarch64-tdep.c: Don't include "features/aarch64-without-fpu.c".
+	(_initialize_aarch64_tdep): Don't call
+	initialize_tdesc_aarch64_without_fpu.
+	* features/Makefile (WHICH): Remove reference to
+	aarch64-without-fpu.
+	* features/aarch64-without-fpu.c: Delete file.
+	* regformats/aarch64-without-fpu.dat: Delete file.
+
+2013-05-28  Yao Qi  <yao@codesourcery.com>
+
+	* tracepoint.c (stringify_collection_list): Remove parameter
+	'string'.
+	(encode_actions): Caller update.  Remove local variables.
+
+2013-05-24  Yao Qi  <yao@codesourcery.com>
+
+	* tracepoint.c (TFILE_PID): Remove.
+	(tfile_open): Don't add thread and inferior.
+	(tfile_close): Don't set 'inferior_ptid'.  Don't call
+	exit_inferior_silent.
+	(tfile_thread_alive): Remove.
+	(init_tfile_ops): Don't set field 'to_thread_alive' of
+	tfile_ops.
+
+2013-05-23  Doug Evans  <dje@google.com>
+
+	* contrib/cc-with-tweaks.sh (-p): Handle no dwo files.
+
+2013-05-23  Pedro Alves  <palves@redhat.com>
+
+	* common/filestuff.c [USE_WIN32API]: Define HAVE_SOCKETS.
+	[HAVE_SYS_SOCKET_H]: Define HAVE_SOCKETS.
+	(socket_mark_cloexec, gdb_socketpair_cloexec, gdb_socket_cloexec):
+	Only define if HAVE_SOCKETS is defined.
+	* configure.ac: Check for sys/socket.h.
+	* config.in, configure: Regenerate.
+
+2013-05-23  Pedro Alves  <palves@redhat.com>
+
+	* dwarf2read.c (create_dwp_hash_table, create_dwo_in_dwp)
+	(open_and_init_dwp_file): Use %s/pulongest instead of %u for
+	printing uint32_t variables.
+
+2013-05-23  Pedro Alves  <palves@redhat.com>
+
+	* NEWS: Mention GDBserver range stepping support.
+
+2013-05-23  Yao Qi  <yao@codesourcery.com>
+	    Pedro Alves  <palves@redhat.com>
+
+	* gdbthread.h (struct thread_control_state) <may_range_step>: New
+	field.
+	* infcmd.c (step_once, until_next_command): Enable range stepping.
+	* infrun.c (displaced_step_prepare): Disable range stepping.
+	(resume): Disable range stepping if stepping over a breakpoint or
+	we have software watchpoints.  If range stepping is enabled,
+	assert the thread is in the stepping range.
+	(clear_proceed_status_thread): Clear may_range_step.
+	(handle_inferior_event): Disable range stepping as soon as we know
+	the thread that hit the event.  Re-enable it whenever we're going
+	to step with a step range.
+	* remote.c (struct vCont_action_support) <r>: New field.
+	(use_range_stepping): New global.
+	(remote_vcont_probe): Handle 'r' action.
+	(append_resumption): Append an 'r' action if the thread may range
+	step.
+	(show_range_stepping): New function.
+	(set_range_stepping): New function.
+	(_initialize_remote): Call add_setshow_boolean_cmd to register the
+	'set range-stepping' and 'show range-stepping' commands.
+	* NEWS: Mention range stepping, the new vCont;r action, and the
+	new "set/show range-stepping" commands.
+
+2013-05-23  Yao Qi  <yao@codesourcery.com>
+	    Pedro Alves  <palves@redhat.com>
+
+	* remote.c (struct vCont_action_support): New struct.
+	(struct remote_state) <support_vCont_t>: Remove field.
+	<vCont_actions_support>: New field.
+	(remote_vcont_probe, remote_stop_ns): Update.
+
+2013-05-23  Yao Qi  <yao@codesourcery.com>
+	    Pedro Alves  <palves@redhat.com>
+
+	* gdbthread.h (pc_in_thread_step_range): New declaration.
+	* thread.c (pc_in_thread_step_range): New function.
+	* infrun.c (handle_inferior_event): Use it.
+
+2013-05-23  Joel Brobecker  <brobecker@adacore.com>
+
+	* mi/mi-cmd-break.c (mi_argv_to_format): Use xsnprintf instead
+	of sprintf.
+
+2013-05-22  Keith Seitz  <keiths@redhat.com>
+
+	* ada-lang.c (is_known_support_routine): Add explicit free of
+	'func_name' from find_frame_funname.
+	(ada_unhandled_exception_name_addr_from_raise): Add cleanups
+	for func_name from find_frame_funname.
+	* python/py-frame.c (frapy_name): Add explicit free of
+	'name' from find_frame_funname.
+	* stack.c (find_frame_funname): Add comment explaining that
+	funcp must be freed by the caller.
+	Return copy of symbol names instead of pointers.
+	(print_frame): Add a cleanup for 'funname' from
+	find_frame_funname.
+	* stack.h (find_frame_funname): Remove "const" from
+	'funname' parameter.
+
+2013-05-22  Tom Tromey  <tromey@redhat.com>
+
+	PR c++/15401:
+	* c-valprint.c (c_value_print): Use value_addr for
+	references.  Convert back to reference type with value_ref.
+
+2013-05-22  Eli Zaretskii  <eliz@gnu.org>
+
+	* windows-nat.c (handle_unload_dll): Don't call solib_add for the
+	unloaded DLL, it will be done by handle_solib_event.  See
+	http://sourceware.org/ml/gdb-patches/2013-05/msg00713.html for the
+	details.
+
+2013-05-22  Phil Muldoon  <pmuldoon@redhat.com>
+
+	* ui-out.c: Create typedef ui_out_level_p and define vector
+	operations for that type.
+	(struct ui_out): Use a vector instead of an array.
+	(current_level): Return level from a vector.
+	(push_level): Create a level in a vector.
+	(pop_level): Delete a level in a vector.
+	(ui_out_new): Create initial level zero level, and store in a
+	vector.
+	(ui_out_destroy): Add vector cleanup.
+
+2013-05-22  Pedro Alves  <palves@redhat.com>
+
+	* python/python-internal.h (gdb_Py_DECREF): Tag with
+	"ARI: editCase function".
+
 2013-05-21  Paul Pluzhnikov  <ppluzhnikov@google.com>
 
 	* solib-svr4.c (svr4_free_so): Protect against NULL dereference.

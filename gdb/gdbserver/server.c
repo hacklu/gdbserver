@@ -20,6 +20,7 @@
 #include "gdbthread.h"
 #include "agent.h"
 #include "notif.h"
+#include "tdesc.h"
 
 #if HAVE_UNISTD_H
 #include <unistd.h>
@@ -75,8 +76,6 @@ int program_signals[GDB_SIGNAL_LAST];
 int program_signals_p;
 
 jmp_buf toplevel;
-
-const char *gdbserver_xmltarget;
 
 /* The PID of the originally created or attached inferior.  Used to
    send signals to the process when GDB sends us an asynchronous interrupt
@@ -646,21 +645,22 @@ handle_general_set (char *own_buf)
 static const char *
 get_features_xml (const char *annex)
 {
-  /* gdbserver_xmltarget defines what to return when looking
-     for the "target.xml" file.  Its contents can either be
-     verbatim XML code (prefixed with a '@') or else the name
-     of the actual XML file to be used in place of "target.xml".
+  const struct target_desc *desc = current_target_desc ();
+
+  /* `desc->xmltarget' defines what to return when looking for the
+     "target.xml" file.  Its contents can either be verbatim XML code
+     (prefixed with a '@') or else the name of the actual XML file to
+     be used in place of "target.xml".
 
      This variable is set up from the auto-generated
      init_registers_... routine for the current target.  */
 
-  if (gdbserver_xmltarget
-      && strcmp (annex, "target.xml") == 0)
+  if (desc->xmltarget != NULL && strcmp (annex, "target.xml") == 0)
     {
-      if (*gdbserver_xmltarget == '@')
-	return gdbserver_xmltarget + 1;
+      if (*desc->xmltarget == '@')
+	return desc->xmltarget + 1;
       else
-	annex = gdbserver_xmltarget;
+	annex = desc->xmltarget;
     }
 
 #ifdef USE_XML
@@ -1115,8 +1115,7 @@ handle_qxfer_libraries_svr4 (const char *annex,
   if (writebuf != NULL)
     return -2;
 
-  if (annex[0] != '\0' || !target_running ()
-      || the_target->qxfer_libraries_svr4 == NULL)
+  if (!target_running () || the_target->qxfer_libraries_svr4 == NULL)
     return -1;
 
   return the_target->qxfer_libraries_svr4 (annex, readbuf, writebuf, offset, len);
@@ -1743,7 +1742,8 @@ handle_query (char *own_buf, int packet_len, int *new_packet_len_p)
 	       PBUFSIZ - 1);
 
       if (the_target->qxfer_libraries_svr4 != NULL)
-	strcat (own_buf, ";qXfer:libraries-svr4:read+");
+	strcat (own_buf, ";qXfer:libraries-svr4:read+"
+		";augmented-libraries-svr4-read+");
       else
 	{
 	  /* We do not have any hook to indicate whether the non-SVR4 target
@@ -2042,7 +2042,11 @@ handle_v_cont (char *own_buf)
     {
       p++;
 
+      memset (&resume_info[i], 0, sizeof resume_info[i]);
+
       if (p[0] == 's' || p[0] == 'S')
+	resume_info[i].kind = resume_step;
+      else if (p[0] == 'r')
 	resume_info[i].kind = resume_step;
       else if (p[0] == 'c' || p[0] == 'C')
 	resume_info[i].kind = resume_continue;
@@ -2063,9 +2067,21 @@ handle_v_cont (char *own_buf)
 	    goto err;
 	  resume_info[i].sig = gdb_signal_to_host (sig);
 	}
+      else if (p[0] == 'r')
+	{
+	  ULONGEST addr;
+
+	  p = unpack_varlen_hex (p + 1, &addr);
+	  resume_info[i].step_range_start = addr;
+
+	  if (*p != ',')
+	    goto err;
+
+	  p = unpack_varlen_hex (p + 1, &addr);
+	  resume_info[i].step_range_end = addr;
+	}
       else
 	{
-	  resume_info[i].sig = 0;
 	  p = p + 1;
 	}
 
@@ -2311,6 +2327,11 @@ handle_v_requests (char *own_buf, int packet_len, int *new_packet_len)
       if (strncmp (own_buf, "vCont?", 6) == 0)
 	{
 	  strcpy (own_buf, "vCont;c;C;s;S;t");
+	  if (target_supports_range_stepping ())
+	    {
+	      own_buf = own_buf + strlen (own_buf);
+	      strcpy (own_buf, ";r");
+	    }
 	  return;
 	}
     }
@@ -3273,7 +3294,8 @@ process_serial_event (void)
       require_running (own_buf);
       if (current_traceframe >= 0)
 	{
-	  struct regcache *regcache = new_register_cache ();
+	  struct regcache *regcache
+	    = new_register_cache (current_target_desc ());
 
 	  if (fetch_traceframe_registers (current_traceframe,
 					  regcache, -1) == 0)

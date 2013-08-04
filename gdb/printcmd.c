@@ -689,6 +689,17 @@ build_address_symbolic (struct gdbarch *gdbarch,
     {
       if (SYMBOL_VALUE_ADDRESS (msymbol) > name_location || symbol == NULL)
 	{
+	  /* If this is a function (i.e. a code address), strip out any
+	     non-address bits.  For instance, display a pointer to the
+	     first instruction of a Thumb function as <function>; the
+	     second instruction will be <function+2>, even though the
+	     pointer is <function+3>.  This matches the ISA behavior.  */
+	  if (MSYMBOL_TYPE (msymbol) == mst_text
+	      || MSYMBOL_TYPE (msymbol) == mst_text_gnu_ifunc
+	      || MSYMBOL_TYPE (msymbol) == mst_file_text
+	      || MSYMBOL_TYPE (msymbol) == mst_solib_trampoline)
+	    addr = gdbarch_addr_bits_remove (gdbarch, addr);
+
 	  /* The msymbol is closer to the address than the symbol;
 	     use the msymbol instead.  */
 	  symbol = 0;
@@ -936,11 +947,10 @@ static void
 print_command_1 (const char *exp, int voidprint)
 {
   struct expression *expr;
-  struct cleanup *old_chain = 0;
+  struct cleanup *old_chain = make_cleanup (null_cleanup, NULL);
   char format = 0;
   struct value *val;
   struct format_data fmt;
-  int cleanup = 0;
 
   if (exp && *exp == '/')
     {
@@ -960,8 +970,7 @@ print_command_1 (const char *exp, int voidprint)
   if (exp && *exp)
     {
       expr = parse_expression (exp);
-      old_chain = make_cleanup (free_current_contents, &expr);
-      cleanup = 1;
+      make_cleanup (free_current_contents, &expr);
       val = evaluate_expression (expr);
     }
   else
@@ -996,8 +1005,7 @@ print_command_1 (const char *exp, int voidprint)
 	annotate_value_end ();
     }
 
-  if (cleanup)
-    do_cleanups (old_chain);
+  do_cleanups (old_chain);
 }
 
 static void

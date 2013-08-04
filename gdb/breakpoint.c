@@ -2248,6 +2248,8 @@ parse_cmd_to_aexpr (CORE_ADDR scope, char *cmd)
 			  fpieces, nargs, argvec);
     }
 
+  do_cleanups (old_cleanups);
+
   if (ex.reason < 0)
     {
       /* If we got here, it means the command could not be parsed to a valid
@@ -2255,8 +2257,6 @@ parse_cmd_to_aexpr (CORE_ADDR scope, char *cmd)
 	 It's no use iterating through the other commands.  */
       return NULL;
     }
-
-  do_cleanups (old_cleanups);
 
   /* We have a valid agent expression, return it.  */
   return aexpr;
@@ -4153,7 +4153,7 @@ bpstat_find_breakpoint (bpstat bsp, struct breakpoint *breakpoint)
 /* See breakpoint.h.  */
 
 enum bpstat_signal_value
-bpstat_explains_signal (bpstat bsp)
+bpstat_explains_signal (bpstat bsp, enum gdb_signal sig)
 {
   enum bpstat_signal_value result = BPSTAT_SIGNAL_NO;
 
@@ -4161,10 +4161,20 @@ bpstat_explains_signal (bpstat bsp)
     {
       /* Ensure that, if we ever entered this loop, then we at least
 	 return BPSTAT_SIGNAL_HIDE.  */
-      enum bpstat_signal_value newval = BPSTAT_SIGNAL_HIDE;
+      enum bpstat_signal_value newval;
 
-      if (bsp->breakpoint_at != NULL)
-	newval = bsp->breakpoint_at->ops->explains_signal (bsp->breakpoint_at);
+      if (bsp->breakpoint_at == NULL)
+	{
+	  /* A moribund location can never explain a signal other than
+	     GDB_SIGNAL_TRAP.  */
+	  if (sig == GDB_SIGNAL_TRAP)
+	    newval = BPSTAT_SIGNAL_HIDE;
+	  else
+	    newval = BPSTAT_SIGNAL_NO;
+	}
+      else
+	newval = bsp->breakpoint_at->ops->explains_signal (bsp->breakpoint_at,
+							   sig);
 
       if (newval > result)
 	result = newval;
@@ -5352,21 +5362,6 @@ handle_jit_event (void)
   target_terminal_inferior ();
 }
 
-/* Handle an solib event by calling solib_add.  */
-
-void
-handle_solib_event (void)
-{
-  clear_program_space_solib_cache (current_inferior ()->pspace);
-
-  /* Check for any newly added shared libraries if we're supposed to
-     be adding them automatically.  Switch terminal for any messages
-     produced by breakpoint_re_set.  */
-  target_terminal_ours_for_output ();
-  solib_add (NULL, 0, &current_target, auto_solib_add);
-  target_terminal_inferior ();
-}
-
 /* Prepare WHAT final decision for infrun.  */
 
 /* Decide what infrun needs to do with this bpstat.  */
@@ -5814,8 +5809,7 @@ output_thread_groups (struct ui_out *uiout,
 		      VEC(int) *inf_num,
 		      int mi_only)
 {
-  struct cleanup *back_to = make_cleanup_ui_out_list_begin_end (uiout,
-								field_name);
+  struct cleanup *back_to;
   int is_mi = ui_out_is_mi_like_p (uiout);
   int inf;
   int i;
@@ -5824,6 +5818,8 @@ output_thread_groups (struct ui_out *uiout,
      there are several.  Always display them for MI. */
   if (!is_mi && mi_only)
     return;
+
+  back_to = make_cleanup_ui_out_list_begin_end (uiout, field_name);
 
   for (i = 0; VEC_iterate (int, inf_num, i, inf); ++i)
     {
@@ -10644,6 +10640,20 @@ print_recreate_watchpoint (struct breakpoint *b, struct ui_file *fp)
   print_recreate_thread (b, fp);
 }
 
+/* Implement the "explains_signal" breakpoint_ops method for
+   watchpoints.  */
+
+static enum bpstat_signal_value
+explains_signal_watchpoint (struct breakpoint *b, enum gdb_signal sig)
+{
+  /* A software watchpoint cannot cause a signal other than
+     GDB_SIGNAL_TRAP.  */
+  if (b->type == bp_watchpoint && sig != GDB_SIGNAL_TRAP)
+    return BPSTAT_SIGNAL_NO;
+
+  return BPSTAT_SIGNAL_HIDE;
+}
+
 /* The breakpoint_ops structure to be used in hardware watchpoints.  */
 
 static struct breakpoint_ops watchpoint_breakpoint_ops;
@@ -12747,7 +12757,7 @@ base_breakpoint_decode_linespec (struct breakpoint *b, char **s,
 /* The default 'explains_signal' method.  */
 
 static enum bpstat_signal_value
-base_breakpoint_explains_signal (struct breakpoint *b)
+base_breakpoint_explains_signal (struct breakpoint *b, enum gdb_signal sig)
 {
   return BPSTAT_SIGNAL_HIDE;
 }
@@ -15757,6 +15767,7 @@ initialize_breakpoint_ops (void)
   ops->print_it = print_it_watchpoint;
   ops->print_mention = print_mention_watchpoint;
   ops->print_recreate = print_recreate_watchpoint;
+  ops->explains_signal = explains_signal_watchpoint;
 
   /* Masked watchpoints.  */
   ops = &masked_watchpoint_breakpoint_ops;

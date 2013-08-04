@@ -5219,6 +5219,38 @@ Execute one machine instruction, but if it is a function call,
 proceed until the function returns.
 
 An argument is a repeat count, as in @code{next}.
+
+@end table
+
+@anchor{range stepping}
+@cindex range stepping
+@cindex target-assisted range stepping
+By default, and if available, @value{GDBN} makes use of
+target-assisted @dfn{range stepping}.  In other words, whenever you
+use a stepping command (e.g., @code{step}, @code{next}), @value{GDBN}
+tells the target to step the corresponding range of instruction
+addresses instead of issuing multiple single-steps.  This speeds up
+line stepping, particularly for remote targets.  Ideally, there should
+be no reason you would want to turn range stepping off.  However, it's
+possible that a bug in the debug info, a bug in the remote stub (for
+remote targets), or even a bug in @value{GDBN} could make line
+stepping behave incorrectly when target-assisted range stepping is
+enabled.  You can use the following command to turn off range stepping
+if necessary:
+
+@table @code
+@kindex set range-stepping
+@kindex show range-stepping
+@item set range-stepping
+@itemx show range-stepping
+Control whether range stepping is enabled.
+
+If @code{on}, and the target supports it, @value{GDBN} tells the
+target to step a range of addresses itself, instead of issuing
+multiple single-steps.  If @code{off}, @value{GDBN} always issues
+single-steps, even if range stepping is supported by the target.  The
+default is @code{on}.
+
 @end table
 
 @node Skipping Over Functions and Files
@@ -15824,6 +15856,8 @@ Show whether opaque types are resolved or not.
 @cindex symbol dump
 @kindex maint print psymbols
 @cindex partial symbol dump
+@kindex maint print msymbols
+@cindex minimal symbol dump
 @item maint print symbols @var{filename}
 @itemx maint print psymbols @var{filename}
 @itemx maint print msymbols @var{filename}
@@ -34610,7 +34644,7 @@ Creates a new inferior (@pxref{Inferiors and Programs}).  The created
 inferior is not associated with any executable.  Such association may
 be established with the @samp{-file-exec-and-symbols} command
 (@pxref{GDB/MI File Commands}).  The command response has a single
-field, @samp{thread-group}, whose value is the identifier of the
+field, @samp{inferior}, whose value is the identifier of the
 thread group corresponding to the new inferior.
 
 @subheading Example
@@ -34618,7 +34652,7 @@ thread group corresponding to the new inferior.
 @smallexample
 @value{GDBP}
 -add-inferior
-^done,thread-group="i3"
+^done,inferior="i3"
 @end smallexample
 
 @subheading The @code{-interpreter-exec} Command
@@ -36332,6 +36366,42 @@ initialization.  If the data-directory is changed after @value{GDBN} has
 started with the @code{set data-directory} command, the file will not be
 reread.
 
+@menu
+* System-wide Configuration Scripts::  Installed System-wide Configuration Scripts
+@end menu
+
+@node System-wide Configuration Scripts
+@subsection Installed System-wide Configuration Scripts
+@cindex system-wide configuration scripts
+
+The @file{system-gdbinit} directory, located inside the data-directory
+(as specified by @option{--with-gdb-datadir} at configure time) contains
+a number of scripts which can be used as system-wide init files.  To
+automatically source those scripts at startup, @value{GDBN} should be
+configured with @option{--with-system-gdbinit}.  Otherwise, any user
+should be able to source them by hand as needed.
+
+The following scripts are currently available:
+@itemize @bullet
+
+@item @file{elinos.py}
+@pindex elinos.py
+@cindex ELinOS system-wide configuration script
+This script is useful when debugging a program on an ELinOS target.
+It takes advantage of the environment variables defined in a standard
+ELinOS environment in order to determine the location of the system
+shared libraries, and then sets the @samp{solib-absolute-prefix}
+and @samp{solib-search-path} variables appropriately.
+
+@item @file{wrs-linux.py}
+@pindex wrs-linux.py
+@cindex Wind River Linux system-wide configuration script
+This script is useful when debugging a program on a target running
+Wind River Linux.  It expects the @env{ENV_PREFIX} to be set to
+the host-side sysroot used by the target system.
+
+@end itemize
+
 @node Maintenance Commands
 @appendix Maintenance Commands
 @cindex maintenance commands
@@ -37479,6 +37549,22 @@ Step.
 Step with signal @var{sig}.  The signal @var{sig} should be two hex digits.
 @item t
 Stop.
+@item r @var{start},@var{end}
+Step once, and then keep stepping as long as the thread stops at
+addresses between @var{start} (inclusive) and @var{end} (exclusive).
+The remote stub reports a stop reply when either the thread goes out
+of the range or is stopped due to an unrelated reason, such as hitting
+a breakpoint.  @xref{range stepping}.
+
+If the range is empty (@var{start} == @var{end}), then the action
+becomes equivalent to the @samp{s} action.  In other words,
+single-step once, and report the stop (even if the stepped instruction
+jumps to @var{start}).
+
+(A stop reply may be sent at any point even if the PC is still within
+the stepping range; for example, it is valid to implement this packet
+in a degenerate way as a single instruction step operation.)
+
 @end table
 
 The optional argument @var{addr} normally associated with the 
@@ -38510,6 +38596,16 @@ These are the currently defined stub features and their properties:
 @tab @samp{-}
 @tab Yes
 
+@item @samp{qXfer:libraries-svr4:read}
+@tab No
+@tab @samp{-}
+@tab Yes
+
+@item @samp{augmented-libraries-svr4-read}
+@tab No
+@tab @samp{-}
+@tab No
+
 @item @samp{qXfer:memory-map:read}
 @tab No
 @tab @samp{-}
@@ -38684,6 +38780,11 @@ The remote stub understands the @samp{qXfer:libraries:read} packet
 
 @item qXfer:libraries-svr4:read
 The remote stub understands the @samp{qXfer:libraries-svr4:read} packet
+(@pxref{qXfer svr4 library list read}).
+
+@item augmented-libraries-svr4-read
+The remote stub understands the augmented form of the
+@samp{qXfer:libraries-svr4:read} packet
 (@pxref{qXfer svr4 library list read}).
 
 @item qXfer:memory-map:read
@@ -38981,13 +39082,40 @@ by supplying an appropriate @samp{qSupported} response (@pxref{qSupported}).
 @anchor{qXfer svr4 library list read}
 Access the target's list of loaded libraries when the target is an SVR4
 platform.  @xref{Library List Format for SVR4 Targets}.  The annex part
-of the generic @samp{qXfer} packet must be empty (@pxref{qXfer read}).
+of the generic @samp{qXfer} packet must be empty unless the remote
+stub indicated it supports the augmented form of this packet
+by supplying an appropriate @samp{qSupported} response
+(@pxref{qXfer read}, @ref{qSupported}).
 
 This packet is optional for better performance on SVR4 targets.  
 @value{GDBN} uses memory read packets to read the SVR4 library list otherwise.
 
 This packet is not probed by default; the remote stub must request it,
 by supplying an appropriate @samp{qSupported} response (@pxref{qSupported}).
+
+If the remote stub indicates it supports the augmented form of this
+packet then the annex part of the generic @samp{qXfer} packet may
+contain a semicolon-separated list of @samp{@var{name}=@var{value}}
+arguments.  The currently supported arguments are:
+
+@table @code
+@item start=@var{address}
+A hexadecimal number specifying the address of the @samp{struct
+link_map} to start reading the library list from.  If unset or zero
+then the first @samp{struct link_map} in the library list will be
+chosen as the starting point.
+
+@item prev=@var{address}
+A hexadecimal number specifying the address of the @samp{struct
+link_map} immediately preceding the @samp{struct link_map}
+specified by the @samp{start} argument.  If unset or zero then
+the remote stub will expect that no @samp{struct link_map}
+exists prior to the starting point.
+
+@end table
+
+Arguments that are not understood by the remote stub will be silently
+ignored.
 
 @item qXfer:memory-map:read::@var{offset},@var{length}
 @anchor{qXfer memory map read}

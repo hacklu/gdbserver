@@ -1,3 +1,203 @@
+2013-06-19  Will Newton  <will.newton@linaro.org>
+
+	* configure: Regenerated.
+	* configure.in: Remove aarch64 dependency on elf-ifunc.c.
+	* elf64-aarch64.c: Remove objalloc.h include.
+	(elf64_aarch64_howto_dynrelocs): Remove R_AARCH64_IRELATIVE howto.
+	(struct elf64_aarch64_link_hash_table): Remove ifunc related
+	members. (elf_aarch64_local_htab_hash): Remove function.
+	(elf_aarch64_local_htab_eq): Remove function.
+	(elf_aarch64_get_local_sym_hash): Remove function.
+	(elf64_aarch64_link_hash_table_create): Remove local hash
+	table initialization.
+	(elf64_aarch64_final_link_relocate): Remove sym argument and
+	handling of ifunc symbols.
+	(elf64_aarch64_relocate_section): Don't pass sym argument to
+	elf64_aarch64_final_link_relocate.
+	(elf64_aarch64_gc_sweep_hook): Remove handling of ifunc symbols.
+	(elf64_aarch64_adjust_dynamic_symbol): Likewise.
+	(elf64_aarch64_check_relocs): Likewise.
+	(elf64_aarch64_post_process_headers): Remove call to
+	_bfd_elf_set_osabi.
+	(elf64_aarch64_is_function_type): New function.
+	(elf64_aarch64_allocate_dynrelocs): Remove handling of ifunc
+	symbols. (elf_aarch64_allocate_local_dynrelocs): Remove function.
+	(elf64_aarch64_size_dynamic_sections): Remove call to
+	elf_aarch64_allocate_local_dynrelocs.
+	(elf64_aarch64_create_small_pltn_entry): Remove info argument.
+	Remove creation of R_AARCH64_IRELATIVE dynamic relocs.
+	(elf64_aarch64_finish_dynamic_symbol): Remove handling of ifunc
+	symbols. (elf_aarch64_finish_local_dynamic_symbol): Remove
+	function. (elf64_aarch64_finish_dynamic_sections): Remove call to
+	elf_aarch64_finish_local_dynamic_symbol.
+	(elf64_aarch64_add_symbol_hook): Remove function.
+
+2013-06-14  Yufeng Zhang  <yufeng.zhang@arm.com>
+
+	* elf64-aarch64.c (elf64_aarch64_final_link_relocate): Call
+	aarch64_resolve_relocation and bfd_elf_aarch64_put_addend to
+	handle the relocations of R_AARCH64_JUMP26, R_AARCH64_CALL26,
+	R_AARCH64_LD64_GOT_LO12_NC, R_AARCH64_ADR_GOT_PAGE and
+	R_AARCH64_GOT_LD_PREL19.
+
+2013-06-13  Terry Guo  <terry.guo@arm.com>
+
+	PR ld/15302
+	* elf32-arm.c (allocate_dynrelocs_for_symbol): Transform
+	ST_BRANCH_TO_ARM into ST_BRANCH_TO_THUMB if the target only
+	supports thumb instructions.
+
+2013-06-11  DJ Delorie  <dj@redhat.com>
+
+	* elf32-rl78.c (rl78_elf_relocate_section): Fix OPsub math.
+
+2013-06-11  Will Newton  <will.newton@linaro.org>
+
+	* elf64-aarch64.c (elf_aarch64_get_local_sym_hash): Use
+	ELF64_R_SYM instead of ELF32_R_SYM.
+
+2013-06-11  Nick Clifton  <nickc@redhat.com>
+
+	* elf32-rl78.c (rl78_elf_finish_dynamic_sections): Onlly run
+	checks if the dynamic sections have been created and relaxation
+	has not been performed.
+
+2013-06-07  Will Newton  <will.newton@linaro.org>
+
+	* configure: Regenerate.
+	* configure.in: Build elf-ifunc.o for AArch64.
+	* elf64-aarch64.c: Include objalloc.h.
+	(elf64_aarch64_howto_dynrelocs): Add R_AARCH64_IRELATIVE howto.
+	(struct elf64_aarch64_link_hash_table): Add members for handling
+	R_AARCH64_IRELATIVE relocations.
+	(elf_aarch64_local_htab_hash): New function.
+	(elf_aarch64_local_htab_eq): New function.
+	(elf_aarch64_get_local_sym_hash): New function.
+	(elf64_aarch64_link_hash_table_create): Initialize local STT_GNU_IFUNC
+	symbol hash.
+	(elf64_aarch64_hash_table_free): Free local STT_GNU_IFUNC symbol hash.
+	(elf64_aarch64_final_link_relocate): Add sym argument.  Add support
+	for handling STT_GNU_IFUNC symbols.
+	(elf64_aarch64_gc_sweep_hook): Add support for garbage collecting
+	references to STT_GNU_IFUNC symbols.
+	(elf64_aarch64_adjust_dynamic_symbol): Add support for handling
+	STT_GNU_IFUNC symbols.
+	(elf64_aarch64_check_relocs): Add support for handling STT_GNU_IFUNC
+	symbols.  Ensure we don't increase plt.refcount from -1 to 0.
+	(elf64_aarch64_post_process_headers): Call _bfd_elf_set_osabi.
+	(elf64_aarch64_is_function_type): Remove function.
+	(elf64_aarch64_allocate_dynrelocs): Call
+	_bfd_elf_allocate_ifunc_dyn_relocs for STT_GNU_IFUNC symbols.
+	(elf_aarch64_allocate_local_dynrelocs): New function.
+	(elf64_aarch64_size_dynamic_sections): Call
+	elf_aarch64_allocate_local_dynrelocs.  Initialize next_irelative_index.
+	(elf64_aarch64_create_small_pltn_entry): Add info argument.
+	Add support for creating .iplt entries for STT_GNU_IFUNC symbols.
+	(elf64_aarch64_finish_dynamic_symbol): Add support for handling
+	STT_GNU_IFUNC symbols and .iplt.
+	(elf_aarch64_finish_local_dynamic_symbol): New function.
+	(elf64_aarch64_finish_dynamic_sections): Call
+	elf_aarch64_finish_local_dynamic_symbol.
+	(elf64_aarch64_add_symbol_hook): New function.
+
+2013-06-03  Alan Modra  <amodra@gmail.com>
+
+	* syms.c (_bfd_stab_section_find_nearest_line): Add last_str
+	var.  Use it with last_stab.
+
+2013-05-30  Paul Brook  <paul@codesourcery.com>
+
+	* bfd-in2.h: Regenerate.
+	* elf32-mips.c (elf_mips_eh_howto): New.
+	(bfd_elf32_bfd_reloc_type_lookup ): Support BFD_RELOC_MIPS_EH.
+	(bfd_elf32_bfd_reloc_name_lookup): Likewise.
+	(mips_elf32_rtype_to_howto): Support R_MIPS_EH.
+	* elf64-mips.c (elf_mips_eh_howto): New.
+	(bfd_elf64_bfd_reloc_type_lookup): Support BFD_RELOC_MIPS_EH.
+	(bfd_elf64_bfd_reloc_name_lookup): Likewise.
+	(mips_elf64_rtype_to_howto): Support R_MIPS_EH.
+	* libbfd.h: Regenerate.
+	* reloc.c (BFD_RELOC_MIPS_EH): New.
+
+2013-05-29  Nick Clifton  <nickc@redhat.com>
+
+	* dwarf2.c (struct dwarf2_debug): Add fields for handling
+	alternate debug info source.
+	(dwarf_debug_sections): Add entries for alternate .debug_str and
+	.debug_info sections.
+	(dwarf_debug_section_enum): Likewise.
+	(read_alt_indirect_string): New function.  Handles a
+	DW_FORM_GNU_strp_alt attribute.
+	(read_alt_indirect_ref): New function.  Handles a
+	DW_FORM_GNU_ref_alt attribute.
+	(read_attribute_value): Process DW_FORM_GNU_ref_alt and
+	DW_FORM_GNU_strp_alt.
+	(find_abstract_instance_name): Handle DW_FORM_GNU_ref_alt
+	attributes.
+	(_bfd_dwarf2_cleanup_debug_info): Free alternate debug info
+	sources.
+	* opncls.c (GNU_DEBUGALTLINK): Define.
+	(bfd_get_alt_debug_link_info): New function.
+	(separate_alt_debug_file_exists): New function.
+	(find_separate_debug_file): Add parameters for fetch and check
+	functions.
+	(bfd_follow_gnu_debugaltlink): New function.
+	* bfd-in2.h: Regenerate.
+
+2013-05-28  Yufeng Zhang  <yufeng.zhang@arm.com>
+
+	* reloc.c (BFD_RELOC_AARCH64_TLSDESC_ADR_PAGE): Rename to ...
+	(BFD_RELOC_AARCH64_TLSDESC_ADR_PAGE21): ... this.
+	(BFD_RELOC_AARCH64_TLSDESC_LD64_PREL19): Rename to ...
+	(BFD_RELOC_AARCH64_TLSDESC_LD_PREL19): ...  this.
+	* bfd-in2.h: Regenerate.
+	* libbfd.h: Regenerate.
+	* elf64-aarch64.c (IS_AARCH64_TLSDESC_RELOC): Update to use
+	the correct names.
+	(elf64_aarch64_tlsdesc_howto_table): Likewise.
+	(elf64_aarch64_reloc_map): Likewise.
+	(aarch64_resolve_relocation): Likewise.
+	(bfd_elf_aarch64_put_addend): Likewise.
+	(aarch64_tls_transition_without_check): Likewise.
+	(aarch64_reloc_got_type): Likewise.
+	(elf64_aarch64_final_link_relocate): Likewise.
+	(elf64_aarch64_tls_relax): Likewise.
+	(elf64_aarch64_relocate_section): Likewise.
+	(elf64_aarch64_gc_sweep_hook): Likewise.
+	(elf64_aarch64_check_relocs): Likewise.
+
+2013-05-26  Mark Wielaard  <mjw@redhat.com>
+
+	* cache.c (BFD_CACHE_MAX_OPEN): Remove define.
+	(max_open_files): New static int initialized to zero.
+	(bfd_cache_max_open): New static function to set and return
+	max_open_files.
+	(bfd_cache_init): Use bfd_cache_max_open.
+	(bfd_open_file): Likewise.
+	* configure.in (AC_CHECK_HEADERS): Add sys/resource.h.
+	(AC_CHECK_FUNCS): Add getrlimit.
+	* configure: Regenerated.
+	* config.in: Likewise.
+	* sysdep.h: Check and include sys/resource.h for getrlimit.
+
+2013-05-23  Alan Modra  <amodra@gmail.com>
+
+	* format.c (bfd_check_format_matches): Don't match a target in
+	targ_selvecs if some other target is a better match.  If
+	targets implement match priority, fall back to the first of
+	the best matches.
+
+2013-05-22  Eric Herman  <eric@freesa.org>
+
+	PR binutils/15462
+	* elfxx-mips.c (_bfd_mips_elf_relocate_section): Warning fix.
+
+2013-05-22  Ralf Dreesen  <gamma@dreesen.net>
+
+	PR binutils/15474
+	* srec.c (srec_set_section_contents): Properly convert size
+	and offset to address when octets_per_byte is not unity.
+
 2013-05-20  Maciej W. Rozycki  <macro@linux-mips.org>
 
 	* elf32-vax.c (elf_vax_instantiate_got_entries): Only set the

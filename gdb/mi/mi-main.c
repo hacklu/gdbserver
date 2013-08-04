@@ -103,7 +103,7 @@ static void mi_execute_async_cli_command (char *cli_command,
 					  char **argv, int argc);
 static int register_changed_p (int regnum, struct regcache *,
 			       struct regcache *);
-static void get_register (struct frame_info *, int regnum, int format);
+static void output_register (struct frame_info *, int regnum, int format);
 
 /* Command implementations.  FIXME: Is this libgdb?  No.  This is the MI
    layer that calls libgdb.  Any operation used in the below should be
@@ -681,6 +681,7 @@ list_available_thread_groups (VEC (int) *ids, int recurse)
   struct osdata_item *item;
   int ix_items;
   struct ui_out *uiout = current_uiout;
+  struct cleanup *cleanup;
 
   /* This keeps a map from integer (pid) to VEC (struct osdata_item *)*
      The vector contains information about all threads for the given pid.
@@ -690,7 +691,7 @@ list_available_thread_groups (VEC (int) *ids, int recurse)
 
   /* get_osdata will throw if it cannot return data.  */
   data = get_osdata ("processes");
-  make_cleanup_osdata_free (data);
+  cleanup = make_cleanup_osdata_free (data);
 
   if (recurse)
     {
@@ -793,6 +794,8 @@ list_available_thread_groups (VEC (int) *ids, int recurse)
 
       do_cleanups (back_to);
     }
+
+  do_cleanups (cleanup);
 }
 
 void
@@ -1069,7 +1072,7 @@ mi_cmd_data_list_register_values (char *command, char **argv, int argc)
   struct gdbarch *gdbarch;
   int regnum, numregs, format;
   int i;
-  struct cleanup *list_cleanup, *tuple_cleanup;
+  struct cleanup *list_cleanup;
 
   /* Note that the test for a valid register must include checking the
      gdbarch_register_name because gdbarch_num_regs may be allocated
@@ -1100,10 +1103,8 @@ mi_cmd_data_list_register_values (char *command, char **argv, int argc)
 	  if (gdbarch_register_name (gdbarch, regnum) == NULL
 	      || *(gdbarch_register_name (gdbarch, regnum)) == '\0')
 	    continue;
-	  tuple_cleanup = make_cleanup_ui_out_tuple_begin_end (uiout, NULL);
-	  ui_out_field_int (uiout, "number", regnum);
-	  get_register (frame, regnum, format);
-	  do_cleanups (tuple_cleanup);
+
+	  output_register (frame, regnum, format);
 	}
     }
 
@@ -1116,26 +1117,25 @@ mi_cmd_data_list_register_values (char *command, char **argv, int argc)
 	  && regnum < numregs
 	  && gdbarch_register_name (gdbarch, regnum) != NULL
 	  && *gdbarch_register_name (gdbarch, regnum) != '\000')
-	{
-	  tuple_cleanup = make_cleanup_ui_out_tuple_begin_end (uiout, NULL);
-	  ui_out_field_int (uiout, "number", regnum);
-	  get_register (frame, regnum, format);
-	  do_cleanups (tuple_cleanup);
-	}
+	output_register (frame, regnum, format);
       else
 	error (_("bad register number"));
     }
   do_cleanups (list_cleanup);
 }
 
-/* Output one register's contents in the desired format.  */
+/* Output register REGNUM's contents in the desired FORMAT.  */
 
 static void
-get_register (struct frame_info *frame, int regnum, int format)
+output_register (struct frame_info *frame, int regnum, int format)
 {
   struct gdbarch *gdbarch = get_frame_arch (frame);
   struct ui_out *uiout = current_uiout;
   struct value *val;
+  struct cleanup *tuple_cleanup;
+
+  tuple_cleanup = make_cleanup_ui_out_tuple_begin_end (uiout, NULL);
+  ui_out_field_int (uiout, "number", regnum);
 
   if (format == 'N')
     format = 0;
@@ -1181,6 +1181,8 @@ get_register (struct frame_info *frame, int regnum, int format)
       ui_out_field_stream (uiout, "value", stb);
       do_cleanups (old_chain);
     }
+
+  do_cleanups (tuple_cleanup);
 }
 
 /* Write given values into registers. The registers and values are

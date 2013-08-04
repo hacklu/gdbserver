@@ -230,7 +230,8 @@ solib_find (char *in_pathname, int *fd)
     {
       int need_dir_separator;
 
-      need_dir_separator = !IS_DIR_SEPARATOR (in_pathname[0]);
+      need_dir_separator = (!IS_DIR_SEPARATOR (in_pathname[0])
+			    && !HAS_TARGET_DRIVE_SPEC (fskind, in_pathname));
 
       /* Cat the prefixed pathname together.  */
       temp_pathname = concat (sysroot,
@@ -1206,6 +1207,37 @@ no_shared_libraries (char *ignored, int from_tty)
 
   clear_solib ();
   objfile_purge_solibs ();
+}
+
+/* See solib.h.  */
+
+void
+update_solib_breakpoints (void)
+{
+  const struct target_so_ops *ops = solib_ops (target_gdbarch ());
+
+  if (ops->update_breakpoints != NULL)
+    ops->update_breakpoints ();
+}
+
+/* See solib.h.  */
+
+void
+handle_solib_event (void)
+{
+  const struct target_so_ops *ops = solib_ops (target_gdbarch ());
+
+  if (ops->handle_event != NULL)
+    ops->handle_event ();
+
+  clear_program_space_solib_cache (current_inferior ()->pspace);
+
+  /* Check for any newly added shared libraries if we're supposed to
+     be adding them automatically.  Switch terminal for any messages
+     produced by breakpoint_re_set.  */
+  target_terminal_ours_for_output ();
+  solib_add (NULL, 0, &current_target, auto_solib_add);
+  target_terminal_inferior ();
 }
 
 /* Reload shared libraries, but avoid reloading the same symbol file

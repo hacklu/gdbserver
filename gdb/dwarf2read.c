@@ -3199,7 +3199,7 @@ dw2_symtab_iter_next (struct dw2_symtab_iterator *iter)
       offset_type cu_index_and_attrs =
 	MAYBE_SWAP (iter->vec[iter->next + 1]);
       offset_type cu_index = GDB_INDEX_CU_VALUE (cu_index_and_attrs);
-      struct dwarf2_per_cu_data *per_cu = dw2_get_cu (cu_index);
+      struct dwarf2_per_cu_data *per_cu;
       int want_static = iter->block_index != GLOBAL_BLOCK;
       /* This value is only valid for index versions >= 7.  */
       int is_static = GDB_INDEX_SYMBOL_STATIC_VALUE (cu_index_and_attrs);
@@ -3212,6 +3212,18 @@ dw2_symtab_iter_next (struct dw2_symtab_iterator *iter)
       int attrs_valid =
 	(iter->index->version >= 7
 	 && symbol_kind != GDB_INDEX_SYMBOL_KIND_NONE);
+
+      /* Don't crash on bad data.  */
+      if (cu_index >= (dwarf2_per_objfile->n_comp_units
+		       + dwarf2_per_objfile->n_type_units))
+	{
+	  complaint (&symfile_complaints,
+		     _(".gdb_index entry has bad CU index"
+		       " [in module %s]"), dwarf2_per_objfile->objfile->name);
+	  continue;
+	}
+
+      per_cu = dw2_get_cu (cu_index);
 
       /* Skip if already read in.  */
       if (per_cu->v.quick->symtab)
@@ -3630,15 +3642,16 @@ dw2_expand_symtabs_matching
 	  gdb_index_symbol_kind symbol_kind =
 	    GDB_INDEX_SYMBOL_KIND_VALUE (cu_index_and_attrs);
 	  int cu_index = GDB_INDEX_CU_VALUE (cu_index_and_attrs);
+	  /* Only check the symbol attributes if they're present.
+	     Indices prior to version 7 don't record them,
+	     and indices >= 7 may elide them for certain symbols
+	     (gold does this).  */
+	  int attrs_valid =
+	    (index->version >= 7
+	     && symbol_kind != GDB_INDEX_SYMBOL_KIND_NONE);
 
-	  /* Don't crash on bad data.  */
-	  if (cu_index >= (dwarf2_per_objfile->n_comp_units
-			   + dwarf2_per_objfile->n_type_units))
-	    continue;
-
-	  /* Only check the symbol's kind if it has one.
-	     Indices prior to version 7 don't record it.  */
-	  if (index->version >= 7)
+	  /* Only check the symbol's kind if it has one.  */
+	  if (attrs_valid)
 	    {
 	      switch (kind)
 		{
@@ -3657,6 +3670,16 @@ dw2_expand_symtabs_matching
 		default:
 		  break;
 		}
+	    }
+
+	  /* Don't crash on bad data.  */
+	  if (cu_index >= (dwarf2_per_objfile->n_comp_units
+			   + dwarf2_per_objfile->n_type_units))
+	    {
+	      complaint (&symfile_complaints,
+			 _(".gdb_index entry has bad CU index"
+			   " [in module %s]"), objfile->name);
+	      continue;
 	    }
 
 	  per_cu = dw2_get_cu (cu_index);
@@ -8867,62 +8890,67 @@ create_dwo_cu (struct dwo_file *dwo_file)
 /* DWP file .debug_{cu,tu}_index section format:
    [ref: http://gcc.gnu.org/wiki/DebugFissionDWP]
 
+   DWP Version 1:
+
    Both index sections have the same format, and serve to map a 64-bit
    signature to a set of section numbers.  Each section begins with a header,
    followed by a hash table of 64-bit signatures, a parallel table of 32-bit
    indexes, and a pool of 32-bit section numbers.  The index sections will be
    aligned at 8-byte boundaries in the file.
 
-   The index section header contains two unsigned 32-bit values (using the
-   byte order of the application binary):
+   The index section header consists of:
 
-    N, the number of compilation units or type units in the index
-    M, the number of slots in the hash table
+    V, 32 bit version number
+    -, 32 bits unused
+    N, 32 bit number of compilation units or type units in the index
+    M, 32 bit number of slots in the hash table
 
-  (We assume that N and M will not exceed 2^32 - 1.)
+   Numbers are recorded using the byte order of the application binary.
 
-  The size of the hash table, M, must be 2^k such that 2^k > 3*N/2.
+   We assume that N and M will not exceed 2^32 - 1.
 
-  The hash table begins at offset 8 in the section, and consists of an array
-  of M 64-bit slots.  Each slot contains a 64-bit signature (using the byte
-  order of the application binary).  Unused slots in the hash table are 0.
-  (We rely on the extreme unlikeliness of a signature being exactly 0.)
+   The size of the hash table, M, must be 2^k such that 2^k > 3*N/2.
 
-  The parallel table begins immediately after the hash table
-  (at offset 8 + 8 * M from the beginning of the section), and consists of an
-  array of 32-bit indexes (using the byte order of the application binary),
-  corresponding 1-1 with slots in the hash table.  Each entry in the parallel
-  table contains a 32-bit index into the pool of section numbers.  For unused
-  hash table slots, the corresponding entry in the parallel table will be 0.
+   The hash table begins at offset 16 in the section, and consists of an array
+   of M 64-bit slots.  Each slot contains a 64-bit signature (using the byte
+   order of the application binary).  Unused slots in the hash table are 0.
+   (We rely on the extreme unlikeliness of a signature being exactly 0.)
 
-  Given a 64-bit compilation unit signature or a type signature S, an entry
-  in the hash table is located as follows:
+   The parallel table begins immediately after the hash table
+   (at offset 16 + 8 * M from the beginning of the section), and consists of an
+   array of 32-bit indexes (using the byte order of the application binary),
+   corresponding 1-1 with slots in the hash table.  Each entry in the parallel
+   table contains a 32-bit index into the pool of section numbers.  For unused
+   hash table slots, the corresponding entry in the parallel table will be 0.
 
-  1) Calculate a primary hash H = S & MASK(k), where MASK(k) is a mask with
-     the low-order k bits all set to 1.
+   Given a 64-bit compilation unit signature or a type signature S, an entry
+   in the hash table is located as follows:
 
-  2) Calculate a secondary hash H' = (((S >> 32) & MASK(k)) | 1).
+   1) Calculate a primary hash H = S & MASK(k), where MASK(k) is a mask with
+      the low-order k bits all set to 1.
 
-  3) If the hash table entry at index H matches the signature, use that
-     entry.  If the hash table entry at index H is unused (all zeroes),
-     terminate the search: the signature is not present in the table.
+   2) Calculate a secondary hash H' = (((S >> 32) & MASK(k)) | 1).
 
-  4) Let H = (H + H') modulo M. Repeat at Step 3.
+   3) If the hash table entry at index H matches the signature, use that
+      entry.  If the hash table entry at index H is unused (all zeroes),
+      terminate the search: the signature is not present in the table.
 
-  Because M > N and H' and M are relatively prime, the search is guaranteed
-  to stop at an unused slot or find the match.
+   4) Let H = (H + H') modulo M. Repeat at Step 3.
 
-  The pool of section numbers begins immediately following the hash table
-  (at offset 8 + 12 * M from the beginning of the section).  The pool of
-  section numbers consists of an array of 32-bit words (using the byte order
-  of the application binary).  Each item in the array is indexed starting
-  from 0.  The hash table entry provides the index of the first section
-  number in the set.  Additional section numbers in the set follow, and the
-  set is terminated by a 0 entry (section number 0 is not used in ELF).
+   Because M > N and H' and M are relatively prime, the search is guaranteed
+   to stop at an unused slot or find the match.
 
-  In each set of section numbers, the .debug_info.dwo or .debug_types.dwo
-  section must be the first entry in the set, and the .debug_abbrev.dwo must
-  be the second entry. Other members of the set may follow in any order.  */
+   The pool of section numbers begins immediately following the hash table
+   (at offset 16 + 12 * M from the beginning of the section).  The pool of
+   section numbers consists of an array of 32-bit words (using the byte order
+   of the application binary).  Each item in the array is indexed starting
+   from 0.  The hash table entry provides the index of the first section
+   number in the set.  Additional section numbers in the set follow, and the
+   set is terminated by a 0 entry (section number 0 is not used in ELF).
+
+   In each set of section numbers, the .debug_info.dwo or .debug_types.dwo
+   section must be the first entry in the set, and the .debug_abbrev.dwo must
+   be the second entry. Other members of the set may follow in any order.  */
 
 /* Create a hash table to map DWO IDs to their CU/TU entry in
    .debug_{info,types}.dwo in DWP_FILE.
@@ -8960,15 +8988,15 @@ create_dwp_hash_table (struct dwp_file *dwp_file, int is_debug_types)
 
   if (version != 1)
     {
-      error (_("Dwarf Error: unsupported DWP file version (%u)"
+      error (_("Dwarf Error: unsupported DWP file version (%s)"
 	       " [in module %s]"),
-	     version, dwp_file->name);
+	     pulongest (version), dwp_file->name);
     }
   if (nr_slots != (nr_slots & -nr_slots))
     {
-      error (_("Dwarf Error: number of slots in DWP hash table (%u)"
+      error (_("Dwarf Error: number of slots in DWP hash table (%s)"
 	       " is not power of 2 [in module %s]"),
-	     nr_slots, dwp_file->name);
+	     pulongest (nr_slots), dwp_file->name);
     }
 
   htab = OBSTACK_ZALLOC (&objfile->objfile_obstack, struct dwp_hash_table);
@@ -9087,9 +9115,9 @@ create_dwo_in_dwp (struct dwp_file *dwp_file,
 
   if (dwarf2_read_debug)
     {
-      fprintf_unfiltered (gdb_stdlog, "Reading %s %u/%s in DWP file: %s\n",
+      fprintf_unfiltered (gdb_stdlog, "Reading %s %s/%s in DWP file: %s\n",
 			  kind,
-			  section_index, hex_string (signature),
+			  pulongest (section_index), hex_string (signature),
 			  dwp_file->name);
     }
 
@@ -9285,22 +9313,31 @@ try_open_dwop_file (const char *file_name, int is_dwp)
   bfd *sym_bfd;
   int desc, flags;
   char *absolute_name;
+  /* Blech.  OPF_TRY_CWD_FIRST also disables searching the path list if
+     FILE_NAME contains a '/'.  So we can't use it.  Instead prepend "."
+     to debug_file_directory.  */
+  char *search_path;
+  static const char dirname_separator_string[] = { DIRNAME_SEPARATOR, '\0' };
 
-  flags = OPF_TRY_CWD_FIRST;
+  if (*debug_file_directory != '\0')
+    search_path = concat (".", dirname_separator_string, debug_file_directory,
+			  NULL);
+  else
+    search_path = xstrdup (".");
+
+  flags = 0;
   if (is_dwp)
     flags |= OPF_SEARCH_IN_PATH;
-  desc = openp (debug_file_directory, flags, file_name,
+  desc = openp (search_path, flags, file_name,
 		O_RDONLY | O_BINARY, &absolute_name);
+  xfree (search_path);
   if (desc < 0)
     return NULL;
 
   sym_bfd = gdb_bfd_open (absolute_name, gnutarget, desc);
-  if (!sym_bfd)
-    {
-      xfree (absolute_name);
-      return NULL;
-    }
   xfree (absolute_name);
+  if (sym_bfd == NULL)
+    return NULL;
   bfd_set_cacheable (sym_bfd, 1);
 
   if (!bfd_check_format (sym_bfd, bfd_object))
@@ -9582,9 +9619,9 @@ open_and_init_dwp_file (void)
     {
       fprintf_unfiltered (gdb_stdlog, "DWP file found: %s\n", dwp_file->name);
       fprintf_unfiltered (gdb_stdlog,
-			  "    %u CUs, %u TUs\n",
-			  dwp_file->cus ? dwp_file->cus->nr_units : 0,
-			  dwp_file->tus ? dwp_file->tus->nr_units : 0);
+			  "    %s CUs, %s TUs\n",
+			  pulongest (dwp_file->cus ? dwp_file->cus->nr_units : 0),
+			  pulongest (dwp_file->tus ? dwp_file->tus->nr_units : 0));
     }
 
   return dwp_file;
@@ -20477,14 +20514,13 @@ dwarf2_per_objfile_free (struct objfile *objfile, void *d)
   struct dwarf2_per_objfile *data = d;
   int ix;
 
-  for (ix = 0; ix < dwarf2_per_objfile->n_comp_units; ++ix)
-    VEC_free (dwarf2_per_cu_ptr,
-	      dwarf2_per_objfile->all_comp_units[ix]->imported_symtabs);
+  for (ix = 0; ix < data->n_comp_units; ++ix)
+   VEC_free (dwarf2_per_cu_ptr, data->all_comp_units[ix]->imported_symtabs);
 
-  for (ix = 0; ix < dwarf2_per_objfile->n_type_units; ++ix)
+  for (ix = 0; ix < data->n_type_units; ++ix)
     VEC_free (dwarf2_per_cu_ptr,
-	      dwarf2_per_objfile->all_type_units[ix]->per_cu.imported_symtabs);
-  xfree (dwarf2_per_objfile->all_type_units);
+	      data->all_type_units[ix]->per_cu.imported_symtabs);
+  xfree (data->all_type_units);
 
   VEC_free (dwarf2_section_info_def, data->types);
 
@@ -21255,6 +21291,12 @@ write_psymtabs_to_index (struct objfile *objfile, const char *dir)
       gdb_byte val[8];
       struct psymtab_cu_index_map *map;
       void **slot;
+
+      /* CU of a shared file from 'dwz -m' may be unused by this main file.
+	 It may be referenced from a local scope but in such case it does not
+	 need to be present in .gdb_index.  */
+      if (psymtab == NULL)
+	continue;
 
       if (psymtab->user == NULL)
 	recursively_write_psymbols (objfile, psymtab, symtab, psyms_seen, i);

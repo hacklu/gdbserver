@@ -245,9 +245,12 @@ collect_probes (char *objname, char *provider, char *probe_name,
   cleanup = make_cleanup (VEC_cleanup (probe_p), &result);
 
   cleanup_temps = make_cleanup (null_cleanup, NULL);
-  compile_rx_or_error (&prov_pat, provider, _("Invalid provider regexp"));
-  compile_rx_or_error (&probe_pat, probe_name, _("Invalid probe regexp"));
-  compile_rx_or_error (&obj_pat, objname, _("Invalid object file regexp"));
+  if (provider != NULL)
+    compile_rx_or_error (&prov_pat, provider, _("Invalid provider regexp"));
+  if (probe_name != NULL)
+    compile_rx_or_error (&probe_pat, probe_name, _("Invalid probe regexp"));
+  if (objname != NULL)
+    compile_rx_or_error (&obj_pat, objname, _("Invalid object file regexp"));
 
   ALL_OBJFILES (objfile)
     {
@@ -608,28 +611,55 @@ info_probes_command (char *arg, int from_tty)
 
 /* See comments in probe.h.  */
 
+unsigned
+get_probe_argument_count (struct probe *probe)
+{
+  const struct sym_probe_fns *probe_fns;
+
+  gdb_assert (probe->objfile != NULL);
+  gdb_assert (probe->objfile->sf != NULL);
+
+  probe_fns = probe->objfile->sf->sym_probe_fns;
+
+  gdb_assert (probe_fns != NULL);
+
+  return probe_fns->sym_get_probe_argument_count (probe);
+}
+
+/* See comments in probe.h.  */
+
+struct value *
+evaluate_probe_argument (struct probe *probe, unsigned n)
+{
+  const struct sym_probe_fns *probe_fns;
+
+  gdb_assert (probe->objfile != NULL);
+  gdb_assert (probe->objfile->sf != NULL);
+
+  probe_fns = probe->objfile->sf->sym_probe_fns;
+
+  gdb_assert (probe_fns != NULL);
+
+  return probe_fns->sym_evaluate_probe_argument (probe, n);
+}
+
+/* See comments in probe.h.  */
+
 struct value *
 probe_safe_evaluate_at_pc (struct frame_info *frame, unsigned n)
 {
   struct probe *probe;
-  const struct sym_probe_fns *probe_fns;
   unsigned n_args;
 
   probe = find_probe_by_pc (get_frame_pc (frame));
   if (!probe)
     return NULL;
 
-  gdb_assert (probe->objfile != NULL);
-  gdb_assert (probe->objfile->sf != NULL);
-  gdb_assert (probe->objfile->sf->sym_probe_fns != NULL);
-
-  probe_fns = probe->objfile->sf->sym_probe_fns;
-  n_args = probe_fns->sym_get_probe_argument_count (probe);
-
+  n_args = get_probe_argument_count (probe);
   if (n >= n_args)
     return NULL;
 
-  return probe_fns->sym_evaluate_probe_argument (probe, n);
+  return evaluate_probe_argument (probe, n);
 }
 
 /* See comment in probe.h.  */
