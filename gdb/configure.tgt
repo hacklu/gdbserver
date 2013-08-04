@@ -231,6 +231,7 @@ i[34567]86-*-linux*)
 i[34567]86-*-gnu*)
 	# Target: Intel 386 running the GNU Hurd
 	gdb_target_obs="i386-tdep.o i387-tdep.o i386gnu-tdep.o solib-svr4.o"
+	build_gdbserver=yes
 	;;
 i[34567]86-*-cygwin*)
 	# Target: Intel 386 running win32
