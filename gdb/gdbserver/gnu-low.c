@@ -64,7 +64,14 @@ void proc_steal_exc_port (struct proc *proc, mach_port_t exc_port);
 void proc_restore_exc_port (struct proc *proc);
 int proc_trace (struct proc *proc, int set);
 static void inf_validate_task_sc (struct inf *inf);
-int using_threads=0;
+
+//gdbserver use ptid_t not the same as gdb does!
+static ptid_t gnu_ptid_build(int pid,long lwp,long tid);
+static int gnu_get_pid(ptid_t ptid);
+static long gnu_get_tid(ptid_t ptid);
+
+int using_threads=1; //!!!!!hacklu !!!
+
 struct inf* gnu_current_inf=NULL;
 struct inf* waiting_inf=NULL;
 static process_t proc_server = MACH_PORT_NULL;
@@ -220,6 +227,20 @@ int __proc_pid (struct proc *proc)
 {
   return proc->inf->pid;
 }
+
+static ptid_t gnu_ptid_build(int pid,long lwp,long tid)
+{
+	return ptid_build(pid,tid,0);
+}
+static int gnu_get_pid(ptid_t ptid)
+{
+	return ptid_get_pid(ptid);
+}
+static long gnu_get_tid(ptid_t ptid)
+{
+	return ptid_get_lwp(ptid);
+}
+
 int proc_update_sc (struct proc *proc)
 {
   int running;
@@ -727,7 +748,7 @@ void inf_validate_procs (struct inf *inf)
 
 	    //add by hacklu
 	    ptid_t ptid;
-	    ptid = ptid_build (inf->pid, 0, thread->tid);
+	    ptid = gnu_ptid_build (inf->pid, 0, thread->tid);
 	    if(find_thread_ptid(ptid))
 		    remove_thread(find_thread_ptid(ptid));
 
@@ -758,7 +779,7 @@ void inf_validate_procs (struct inf *inf)
 	    last = thread;
 	    proc_debug (thread, "new thread: %d", threads[i]);
 
-	    ptid = ptid_build (inf->pid, 0, thread->tid);
+	    ptid = gnu_ptid_build (inf->pid, 0, thread->tid);
 
 	    /* Tell GDB's generic thread code.  */
 
@@ -1237,7 +1258,7 @@ static void gnu_resume_1 (struct target_ops *ops,
 	else
 		/* Just allow a single thread to run.  */
 	{
-		struct proc *thread = inf_tid_to_thread (inf, ptid_get_tid (ptid));
+		struct proc *thread = inf_tid_to_thread (inf, gnu_get_tid (ptid));
 
 		if (!thread)
 			error (_("Can't run single thread id %s: no such thread!"),
@@ -1248,7 +1269,7 @@ static void gnu_resume_1 (struct target_ops *ops,
 
 	if (step)
 	{
-		step_thread = inf_tid_to_thread (inf, ptid_get_tid (ptid));
+		step_thread = inf_tid_to_thread (inf, gnu_get_tid (ptid));
 		if (!step_thread)
 			warning (_("Can't step thread id %s: no such thread."),
 					target_pid_to_str (ptid));
@@ -1471,19 +1492,20 @@ rewait:
 
 	thread = inf->wait.thread;
 	if (thread)
-		ptid = ptid_build (inf->pid, 0, thread->tid);
+		ptid = gnu_ptid_build (inf->pid, 0, thread->tid);
 	else if (ptid_equal (ptid, minus_one_ptid))
 		thread = inf_tid_to_thread (inf, -1);
 	else
-		thread = inf_tid_to_thread (inf, ptid_get_tid (ptid));
+		thread = inf_tid_to_thread (inf, gnu_get_tid (ptid));
 
 	if (!thread || thread->port == MACH_PORT_NULL)
 	{
 		/* TID is dead; try and find a new thread.  */
 		if (inf_update_procs (inf) && inf->threads)
-			ptid = ptid_build (inf->pid, 0, inf->threads->tid); /* The first
-									       available
-									       thread.  */
+			ptid = gnu_ptid_build (inf->pid, 0, inf->threads->tid);
+		/* The first
+		   available
+		   thread.  */
 		else
 			ptid = inferior_ptid;	/* let wait_for_inferior handle exit case */
 	}
@@ -1509,7 +1531,7 @@ rewait:
 			: "?",
 			status->value.integer);
 
-	/*inferior_ptid=ptid;*/
+	inferior_ptid=ptid;
 	return ptid;
 }
 
@@ -1591,7 +1613,7 @@ gnu_fetch_registers_1 (struct target_ops *ops,
   inf_update_procs (gnu_current_inf);
 
   thread = inf_tid_to_thread (gnu_current_inf,
-			      ptid_get_tid (inferior_ptid));
+			      gnu_get_tid (inferior_ptid));
   if (!thread)
     error (_("[gnu_fetch_registers_1]Can't fetch registers from thread %s: No such thread"),
 	   target_pid_to_str (inferior_ptid));
@@ -1662,7 +1684,7 @@ gnu_store_registers_1 (struct target_ops *ops,
   inf_update_procs (gnu_current_inf);
 
   thread = inf_tid_to_thread (gnu_current_inf,
-			      ptid_get_tid (inferior_ptid));
+			      gnu_get_tid (inferior_ptid));
   if (!thread)
     error (_("Couldn't store registers into thread %s: No such thread"),
 	   target_pid_to_str (inferior_ptid));
@@ -1985,7 +2007,16 @@ static int gnu_write_memory (CORE_ADDR addr, const unsigned char *myaddr, int le
 	if (task == MACH_PORT_NULL)
 		return 0;
 	/*gnu_debug("[gnu_write_memory]:addr=0x%p,length=%d\n",addr,length);*/
+
+	unsigned char data[100];
+	gnu_read_inferior(task,addr,data,4);
+	printf("before write, read data=%02x %02x %02x %02x\n",data[0],data[1],data[2],data[3]);
+
 	ret = gnu_write_inferior(task,addr,myaddr,length);
+	printf("gnu_write_inferior() addr=%p,data=%02x,length=%d\n",addr,*myaddr,length);
+
+	gnu_read_inferior(task,addr,data,4);
+	printf("after write, read data=%02x %02x %02x %02x\n",data[0],data[1],data[2],data[3]);
 
 	if(length!=ret)
 		printf("gnu_write_inferior,length=%d, but return %d\n",length,ret);
