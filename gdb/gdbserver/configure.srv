@@ -119,7 +119,8 @@ case "${target}" in
 			ipa_obj="${ipa_i386_linux_regobj} linux-i386-ipa.o"
 			;;
   i[34567]86-*-gnu*)	srv_regobj="$srv_i386_regobj"
-			srv_tgtobj="gnu-low.o"
+			srv_tgtobj="gnu-low.o process_reply_S.o exc_request_S.o msg_reply_S.o notify_S.o exc_request_U.o"
+			srv_xmlfiles="$srv_i386_xmlfiles"
 			;;
 
   i[34567]86-*-lynxos*)	srv_regobj="i386.o"
