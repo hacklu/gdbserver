@@ -170,7 +170,6 @@ internal_error (const char *file, int line, const char *fmt, ...)
 #define CELLSIZE 50
 
 /* Return the next entry in the circular buffer.  */
-
 static char *
 get_cell (void)
 {
@@ -179,6 +178,15 @@ get_cell (void)
   if (++cell >= NUMCELLS)
     cell = 0;
   return buf[cell];
+}
+
+const char *
+host_address_to_string (const void *addr)
+{
+  char *str = get_cell ();
+
+  xsnprintf (str, CELLSIZE, "0x%s", phex_nz ((unsigned long long) addr, sizeof (addr)));
+  return str;
 }
 
 static char *
