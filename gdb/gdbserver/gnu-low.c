@@ -1045,7 +1045,7 @@ struct proc * inf_tid_to_thread (struct inf *inf, int tid)
 {
   struct proc *thread = inf->threads;
 
-  printf("[inf_tid_to_thread]:search thread which tid=%d\n",tid);
+  gnu_debug("[inf_tid_to_thread]:search thread which tid=%d\n",tid);
 
   while (thread)
     if (thread->tid == tid)
@@ -1288,20 +1288,19 @@ static void gnu_resume (struct thread_resume *resume_info, size_t n)
 {
 	/* FIXME: Assume for now that n == 1.  */
 	ptid_t ptid = resume_info[0].thread;
-	const int request = (resume_info[0].kind == resume_step
-			? PTRACE_SINGLESTEP : PTRACE_CONT);
+	const int step = (resume_info[0].kind == resume_step
+			? 1 : 0); //1 means step, 0 means contiune
 	const int signal = resume_info[0].sig;
 	if (ptid_equal (ptid, minus_one_ptid))
 		ptid = thread_to_gdb_id (current_inferior);
 
 	regcache_invalidate ();
 
-	gnu_debug("in gnu_resume: ptid=%d, request=%d, signal=%d\n",ptid,request,signal);
+	gnu_debug0("in gnu_resume: ptid=%d, step=%d, signal=%d\n",ptid,step,signal);
 
-	/*lynx_ptrace (request, ptid, 1, signal, 0);*/
 	/*my_resume();*/
 /*static void gnu_resume_1 (struct target_ops *ops,ptid_t ptid, int step, enum gdb_signal sig)*/
-	gnu_resume_1(NULL,ptid,0,signal);
+	gnu_resume_1(NULL,ptid,step,signal);
 
 }
 
@@ -1991,8 +1990,10 @@ static int gnu_read_memory (CORE_ADDR addr, unsigned char *myaddr, int length)
 		return 0;
 	/*gnu_debug0("[gnu_read_memory]:addr=%p,length=%d\n",addr,length);*/
 	ret = gnu_read_inferior(task,addr,myaddr,length);
-	if(length!=ret)
+	if(length!=ret){
 		printf("gnu_read_inferior,length=%d, but return %d\n",length,ret);
+		return -1;
+	}
 	return 0;
 	/*return 0;*/
 }
@@ -2008,18 +2009,20 @@ static int gnu_write_memory (CORE_ADDR addr, const unsigned char *myaddr, int le
 		return 0;
 	/*gnu_debug("[gnu_write_memory]:addr=0x%p,length=%d\n",addr,length);*/
 
-	unsigned char data[100];
-	gnu_read_inferior(task,addr,data,4);
-	printf("before write, read data=%02x %02x %02x %02x\n",data[0],data[1],data[2],data[3]);
+	/*unsigned char data[100];*/
+	/*gnu_read_inferior(task,addr,data,4);*/
+	/*printf("before write, read data=%02x %02x %02x %02x\n",data[0],data[1],data[2],data[3]);*/
 
 	ret = gnu_write_inferior(task,addr,myaddr,length);
-	printf("gnu_write_inferior() addr=%p,data=%02x,length=%d\n",addr,*myaddr,length);
+	/*gnu_debug("gnu_write_inferior() addr=%p,data=%02x,length=%d\n",addr,*myaddr,length);*/
 
-	gnu_read_inferior(task,addr,data,4);
-	printf("after write, read data=%02x %02x %02x %02x\n",data[0],data[1],data[2],data[3]);
+	/*gnu_read_inferior(task,addr,data,4);*/
+	/*printf("after write, read data=%02x %02x %02x %02x\n",data[0],data[1],data[2],data[3]);*/
 
-	if(length!=ret)
-		printf("gnu_write_inferior,length=%d, but return %d\n",length,ret);
+	if(length!=ret){
+		gnu_debug("gnu_write_inferior,length=%d, but return %d\n",length,ret);
+		return -1;
+	}
 	return 0;
 }
 
@@ -2167,8 +2170,8 @@ error_t S_exception_raise_request (mach_port_t port, mach_port_t reply_port,
 	struct inf *inf = waiting_inf;
 	struct proc *thread = inf_port_to_thread (inf, thread_port);
 
-	inf_debug (waiting_inf,
-			"thread = %d, task = %d, exc = %d, code = %d, subcode = %d",
+	inf_debug0(waiting_inf,
+			"S_exception_raise_request thread = %d, task = %d, exc = %d, code = %d, subcode = %d",
 			thread_port, task_port, exception, code, subcode);
 
 	if (!thread)
@@ -2249,7 +2252,7 @@ S_proc_wait_reply (mach_port_t reply, error_t err,
 {
 	struct inf *inf = waiting_inf;
 
-	inf_debug (inf, "err = %s, pid = %d, status = 0x%x, sigcode = %d",
+	inf_debug0(inf, "S_proc_wait_reply  err = %s, pid = %d, status = 0x%x, sigcode = %d",
 			err ? safe_strerror (err) : "0", pid, status, sigcode);
 
 	if (err && proc_wait_pid && (!inf->task || !inf->task->port))
@@ -2298,7 +2301,7 @@ S_proc_wait_reply (mach_port_t reply, error_t err,
 	error_t
 S_msg_sig_post_untraced_reply (mach_port_t reply, error_t err)
 {
-#if 0
+#if 1
 	struct inf *inf = waiting_inf;
 
 	if (err == EBUSY)
