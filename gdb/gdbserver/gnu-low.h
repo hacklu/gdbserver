@@ -53,6 +53,13 @@ struct regs_info
 
 #define proc_is_task(proc) ((proc)->tid == PROC_TID_TASK)
 #define proc_is_thread(proc) ((proc)->tid != PROC_TID_TASK)
+
+#ifndef PIDGET
+#define PIDGET(PTID) (ptid_get_pid (PTID))
+#define TIDGET(PTID) (ptid_get_lwp (PTID))
+#define MERGEPID(PID, TID) ptid_build (PID, TID, 0)
+#endif
+
 struct exc_state
   {
     int exception;		/* The exception code.  */
@@ -220,7 +227,27 @@ static void inf_validate_procinfo (struct inf *inf);
 
 //gdbserver use ptid_t not the same as gdb does!
 static ptid_t gnu_ptid_build(int pid,long lwp,long tid);
-static long gnu_get_tid(ptid_t ptid);
 
 //add for erase warning
 extern const char * host_address_to_string (const void *addr);
+
+extern int debug_flags;
+#define inf_debug(_inf, msg, args...) \
+  do { struct inf *__inf = (_inf); \
+       debug ("{inf %d %s}: " msg, __inf->pid, \
+       host_address_to_string (__inf) , ##args); } while (0)
+
+#define proc_debug(_proc, msg, args...) \
+  do { struct proc *__proc = (_proc); \
+       debug ("{proc %d/%d %s}: " msg, \
+	      __proc_pid (__proc), __proc->tid, \
+	      host_address_to_string (__proc) , ##args); } while (0)
+
+#define debug(msg, args...) \
+ do { if (debug_flags) \
+        printf ("%s:%d: " msg "\r\n", \
+			    __FILE__ , __LINE__ , ##args); } while (0)
+#ifndef safe_strerror 
+#define safe_strerror(err) \
+	"XXXX"
+#endif

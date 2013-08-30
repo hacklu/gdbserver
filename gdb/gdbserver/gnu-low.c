@@ -11,6 +11,11 @@
 #include "gdb_wait.h"
 #include <signal.h>
 
+#include <mach.h>
+#include <mach_error.h>
+#include <mach/message.h>
+#include <mach/exception.h>
+
 #include "msg_reply_S.h"
 #include "exc_request_S.h"
 #include "process_reply_S.h"
@@ -63,36 +68,9 @@ struct process_info_private
 	struct inf * inf;
 };
 
-#ifndef PIDGET
-#define PIDGET(PTID) (ptid_get_pid (PTID))
-#define TIDGET(PTID) (ptid_get_lwp (PTID))
-#define MERGEPID(PID, TID) ptid_build (PID, TID, 0)
-#endif
+int debug_flags=0;
 
-static int debug_flags=0;
-
-#define inf_debug(_inf, msg, args...) \
-  do { struct inf *__inf = (_inf); \
-       debug ("{inf %d %s}: " msg, __inf->pid, \
-       host_address_to_string (__inf) , ##args); } while (0)
-
-#define proc_debug(_proc, msg, args...) \
-  do { struct proc *__proc = (_proc); \
-       debug ("{proc %d/%d %s}: " msg, \
-	      __proc_pid (__proc), __proc->tid, \
-	      host_address_to_string (__proc) , ##args); } while (0)
-
-#define debug(msg, args...) \
- do { if (debug_flags) \
-        printf ("%s:%d: " msg "\r\n", \
-			    __FILE__ , __LINE__ , ##args); } while (0)
-#ifndef safe_strerror 
-#define safe_strerror(err) \
-	"XXXX"
-#endif
-
-static void
-gnu_debug (char *string, ...)
+void gnu_debug (char *string, ...)
 {
   va_list args;
 
@@ -1570,37 +1548,6 @@ static ptid_t gnu_wait (ptid_t ptid,
 	return event_ptid;
 }
 
-#define I386_NUM_GREGS	16
-
-//copy from i386gnu-nat.c
-/* Offset to the thread_state_t location where REG is stored.  */
-#define REG_OFFSET(reg) offsetof (struct i386_thread_state, reg)
-
-/* At REG_OFFSET[N] is the offset to the thread_state_t location where
-   the GDB register N is stored.  */
-static int reg_offset[] =
-{
-	REG_OFFSET (eax), REG_OFFSET (ecx), REG_OFFSET (edx), REG_OFFSET (ebx),
-	REG_OFFSET (uesp), REG_OFFSET (ebp), REG_OFFSET (esi), REG_OFFSET (edi),
-	REG_OFFSET (eip), REG_OFFSET (efl), REG_OFFSET (cs), REG_OFFSET (ss),
-	REG_OFFSET (ds), REG_OFFSET (es), REG_OFFSET (fs), REG_OFFSET (gs)
-};
-
-/* Offset to the greg_t location where REG is stored.  */
-#define CREG_OFFSET(reg) (REG_##reg * 4)
-
-/* At CREG_OFFSET[N] is the offset to the greg_t location where
-   the GDB register N is stored.  */
-static int creg_offset[] =
-{
-	CREG_OFFSET (EAX), CREG_OFFSET (ECX), CREG_OFFSET (EDX), CREG_OFFSET (EBX),
-	CREG_OFFSET (UESP), CREG_OFFSET (EBP), CREG_OFFSET (ESI), CREG_OFFSET (EDI),
-	CREG_OFFSET (EIP), CREG_OFFSET (EFL), CREG_OFFSET (CS), CREG_OFFSET (SS),
-	CREG_OFFSET (DS), CREG_OFFSET (ES), CREG_OFFSET (FS), CREG_OFFSET (GS)
-};
-#define REG_ADDR(state, regnum) ((char *)(state) + reg_offset[regnum])
-#define CREG_ADDR(state, regnum) ((const char *)(state) + creg_offset[regnum])
-
 /* Return printable description of proc.  */
 	char *
 proc_string (struct proc *proc)
@@ -1615,191 +1562,17 @@ proc_string (struct proc *proc)
 	return tid_str;
 }
 
-	static void
-fetch_fpregs (struct regcache *regcache, struct proc *thread)
-{
-	gnu_debug("fetch_fpregs() not support now\n");
-}
-	static void
-store_fpregs (const struct regcache *regcache, struct proc *thread, int regno)
-{
-
-	gnu_debug("store_fpregs() not support now\n");
-}
-/* Fetch register REGNO, or all regs if REGNO is -1.  */
-	static void
-gnu_fetch_registers_1 (struct target_ops *ops,
-		struct regcache *regcache, int regno)
-{
-#if 1
-	struct proc *thread;
-
-	/* Make sure we know about new threads.  */
-	inf_update_procs (gnu_current_inf);
-
-	thread = inf_tid_to_thread (gnu_current_inf,
-			gnu_get_tid (inferior_ptid));
-	if (!thread)
-		error (_("[gnu_fetch_registers_1]Can't fetch registers from thread %s: No such thread"),
-				target_pid_to_str (inferior_ptid));
-
-	if (regno < I386_NUM_GREGS || regno == -1)
-	{
-		thread_state_t state;
-
-		/* This does the dirty work for us.  */
-		state = proc_get_state (thread, 0);
-		if (!state)
-		{
-			warning (_("Couldn't fetch registers from %s"),
-					proc_string (thread));
-
-			return;
-		}
-
-		if (regno == -1)
-		{
-			int i;
-
-			proc_debug (thread, "fetching all register");
-
-			for (i = 0; i < I386_NUM_GREGS; i++)
-				/*regcache_raw_supply (regcache, i, REG_ADDR (state, i));*/
-				supply_register (regcache, i, REG_ADDR(state,i));
-			thread->fetched_regs = ~0;
-		}
-		else
-		{
-			/*proc_debug (thread, "fetching register %s",*/
-			/*gdbarch_register_name (get_regcache_arch (regcache),*/
-			/*regno));*/
-
-			/*regcache_raw_supply (regcache, regno,REG_ADDR (state, regno));*/
-			supply_register (regcache, regno, REG_ADDR(state,regno));
-			thread->fetched_regs |= (1 << regno);
-		}
-	}
-
-	if (regno >= I386_NUM_GREGS || regno == -1)
-	{
-		proc_debug (thread, "fetching floating-point registers");
-
-		fetch_fpregs (regcache, thread);
-	}
-#endif
-}
 void gnu_fetch_registers (struct regcache *regcache, int regno)
 {
 	gnu_debug("gnu_fetch_registers() regno=%d\n",regno);
 	return gnu_fetch_registers_1(NULL,regcache,regno);
 }
 
-/* Store at least register REGNO, or all regs if REGNO == -1.  */
-//copy from i386gnu-nat.c
-	static void
-gnu_store_registers_1 (struct target_ops *ops,
-		struct regcache *regcache, int regno)
-{
-#if 1
-	struct proc *thread;
-	/*struct gdbarch *gdbarch = get_regcache_arch (regcache);*/
-	const struct target_desc *gdbarch = regcache->tdesc;
-
-	/* Make sure we know about new threads.  */
-	inf_update_procs (gnu_current_inf);
-
-	thread = inf_tid_to_thread (gnu_current_inf,
-			gnu_get_tid (inferior_ptid));
-	if (!thread)
-		error (_("Couldn't store registers into thread %s: No such thread"),
-				target_pid_to_str (inferior_ptid));
-
-	if (regno < I386_NUM_GREGS || regno == -1)
-	{
-		thread_state_t state;
-		thread_state_data_t old_state;
-		int was_aborted = thread->aborted;
-		int was_valid = thread->state_valid;
-		int trace;
-
-		if (!was_aborted && was_valid)
-			memcpy (&old_state, &thread->state, sizeof (old_state));
-
-		state = proc_get_state (thread, 1);
-		if (!state)
-		{
-			warning (_("Couldn't store registers into %s"),
-					proc_string (thread));
-			return;
-		}
-
-		/* Save the T bit.  We might try to restore the %eflags register
-		   below, but changing the T bit would seriously confuse GDB.  */
-		trace = ((struct i386_thread_state *)state)->efl & 0x100;
-
-		if (!was_aborted && was_valid)
-			/* See which registers have changed after aborting the thread.  */
-		{
-			int check_regno;
-
-			for (check_regno = 0; check_regno < I386_NUM_GREGS; check_regno++)
-				if ((thread->fetched_regs & (1 << check_regno))
-						&& memcpy (REG_ADDR (&old_state, check_regno),
-							REG_ADDR (state, check_regno),
-							register_size (gdbarch, check_regno)))
-					/* Register CHECK_REGNO has changed!  Ack!  */
-				{
-					/*warning (_("Register %s changed after the thread was aborted"),*/
-					/*gdbarch_register_name (gdbarch, check_regno));*/
-					if (regno >= 0 && regno != check_regno)
-						/* Update GDB's copy of the register.  */
-						/*regcache_raw_supply (regcache, check_regno,REG_ADDR (state, check_regno));*/
-						supply_register (regcache, check_regno, REG_ADDR(state,check_regno));
-					else
-						warning (_("... also writing this register!  "
-									"Suspicious..."));
-				}
-		}
-
-		if (regno == -1)
-		{
-			int i;
-
-			proc_debug (thread, "storing all registers");
-
-			for (i = 0; i < I386_NUM_GREGS; i++)
-				/*if (REG_VALID == regcache_register_status (regcache, i))*/
-				/*regcache_raw_collect (regcache, i, REG_ADDR (state, i));*/
-				collect_register (regcache, i, REG_ADDR (state, i));
-		}
-		else
-		{
-			/*proc_debug (thread, "storing register %s",gdbarch_register_name (gdbarch, regno));*/
-
-			/*gdb_assert (REG_VALID == regcache_register_status (regcache, regno));*/
-			/*regcache_raw_collect (regcache, regno, REG_ADDR (state, regno));*/
-			collect_register (regcache, regno, REG_ADDR (state, regno));
-		}
-
-		/* Restore the T bit.  */
-		((struct i386_thread_state *)state)->efl &= ~0x100;
-		((struct i386_thread_state *)state)->efl |= trace;
-	}
-
-	if (regno >= I386_NUM_GREGS || regno == -1)
-	{
-		proc_debug (thread, "storing floating-point registers");
-
-		store_fpregs (regcache, thread, regno);
-	}
-#endif
-}
 void gnu_store_registers (struct regcache *regcache, int regno)
 {
 	gnu_debug("gnu_store_registers() regno=%d\n",regno);
 	return gnu_store_registers_1(NULL,regcache,regno);
 }
-
 /* Read inferior task's LEN bytes from ADDR and copy it to MYADDR in
    gdb's address space.  Return 0 on failure; number of bytes read
    otherwise.  */
