@@ -64,6 +64,7 @@ void proc_steal_exc_port (struct proc *proc, mach_port_t exc_port);
 void proc_restore_exc_port (struct proc *proc);
 int proc_trace (struct proc *proc, int set);
 static void inf_validate_task_sc (struct inf *inf);
+static void inf_validate_procinfo (struct inf *inf);
 
 //gdbserver use ptid_t not the same as gdb does!
 static ptid_t gnu_ptid_build(int pid,long lwp,long tid);
@@ -904,15 +905,53 @@ void inf_startup (struct inf *inf, int pid)
 			inf->event_port, MACH_MSG_TYPE_MAKE_SEND);
 	inf_set_pid (inf, pid);
 }
+
+/* Detachs from INF's inferior task, letting it run once again...  */
+void inf_detach (struct inf *inf)
+{
+  struct proc *task = inf->task;
+
+  inf_debug (inf, "detaching...");
+
+  inf_clear_wait (inf);
+  inf_set_step_thread (inf, 0);
+
+  if (task)
+    {
+      struct proc *thread;
+
+      inf_validate_procinfo (inf);
+
+      inf_set_traced (inf, 0);
+      if (inf->stopped)
+	{
+	  if (inf->nomsg)
+	    inf_continue (inf);
+	  else
+	    inf_signal (inf, GDB_SIGNAL_0);
+	}
+
+      proc_restore_exc_port (task);
+      task->sc = inf->detach_sc;
+
+      for (thread = inf->threads; thread; thread = thread->next)
+	{
+	  proc_restore_exc_port (thread);
+	  thread->sc = thread->detach_sc;
+	}
+
+      inf_update_suspends (inf);
+    }
+
+  inf_cleanup (inf);
+}
 void inf_attach (struct inf *inf, int pid)
 {
 	inf_debug (inf, "attaching: %d", pid);
 
 	if (inf->pid)
 	{
-		/*inf_detach (inf);*/
-		printf("bug: inf_detach not impliment\n");
-		exit(-1);
+		inf_detach (inf);
 	}
 
 	inf_startup (inf, pid);
@@ -1002,9 +1041,58 @@ static int gnu_create_inferior (char *program, char **allargs)
 	return pid;
 }
 
+/* Fork an inferior process, and start debugging it.  */
+
+/* Set INFERIOR_PID to the first thread available in the child, if any.  */
+static int inf_pick_first_thread (void)
+{
+	if (gnu_current_inf->task && gnu_current_inf->threads)
+		/* The first thread.  */
+		return gnu_current_inf->threads->tid;
+	else
+		/* What may be the next thread.  */
+		return next_thread_id;
+}
 static int gnu_attach (unsigned long pid)
 {
 	return -1;
+	struct inf *inf = cur_inf ();
+	/*struct inferior *inferior;*/
+
+	if (pid == getpid ())		/* Trying to masturbate?  */
+		error (_("I refuse to debug myself!"));
+
+	inf_debug (inf, "attaching to pid: %d", pid);
+
+	inf_attach (inf, pid);
+
+
+	/*inferior = current_inferior ;*/
+	/*inferior_appeared (inferior, pid);*/
+	/*inferior->attach_flag = 1;*/
+
+	inf_update_procs (inf);
+
+	inferior_ptid = gnu_ptid_build (pid, 0, inf_pick_first_thread ());
+
+	/* We have to initialize the terminal settings now, since the code
+	   below might try to restore them.  */
+	/*target_terminal_init ();*/
+
+	/* If the process was stopped before we attached, make it continue the next
+	   time the user does a continue.  */
+	inf_validate_procinfo (inf);
+
+	/*inf_update_signal_thread (inf);*/
+	inf->signal_thread = inf->threads ? inf->threads->next : 0;
+	inf_set_traced (inf, inf->want_signals);
+
+#if 0				/* Do we need this?  */
+	renumber_threads (0);		/* Give our threads reasonable names.  */
+#endif
+	gnu_add_process(pid,1);
+	add_thread (inferior_ptid, NULL);
+	return 0;
 }
 
 static int gnu_kill (int pid)
@@ -1036,177 +1124,177 @@ static int gnu_thread_alive (ptid_t ptid)
    detailed information.  */
 void inf_task_died_status (struct inf *inf)
 {
-  printf ("Pid %d died with unknown exit status, using SIGKILL.",inf->pid);
-  inf->wait.status.kind = TARGET_WAITKIND_SIGNALLED;
-  inf->wait.status.value.sig = GDB_SIGNAL_KILL;
+	printf ("Pid %d died with unknown exit status, using SIGKILL.",inf->pid);
+	inf->wait.status.kind = TARGET_WAITKIND_SIGNALLED;
+	inf->wait.status.value.sig = GDB_SIGNAL_KILL;
 }
 
 struct proc * inf_tid_to_thread (struct inf *inf, int tid)
 {
-  struct proc *thread = inf->threads;
+	struct proc *thread = inf->threads;
 
-  gnu_debug("[inf_tid_to_thread]:search thread which tid=%d\n",tid);
+	gnu_debug("[inf_tid_to_thread]:search thread which tid=%d\n",tid);
 
-  while (thread)
-    if (thread->tid == tid)
-      return thread;
-    else
-      thread = thread->next;
-  return 0;
+	while (thread)
+		if (thread->tid == tid)
+			return thread;
+		else
+			thread = thread->next;
+	return 0;
 }
 /* Validates INF's stopped, nomsg and traced field from the actual
    proc server state.  Note that the traced field is only updated from
    the proc server state if we do not have a message port.  If we do
    have a message port we'd better look at the tracemask itself.  */
-static void
+	static void
 inf_validate_procinfo (struct inf *inf)
 {
-  char *noise;
-  mach_msg_type_number_t noise_len = 0;
-  struct procinfo *pi;
-  mach_msg_type_number_t pi_len = 0;
-  int info_flags = 0;
-  error_t err =
-    proc_getprocinfo (proc_server, inf->pid, &info_flags,
-		      (procinfo_t *) &pi, &pi_len, &noise, &noise_len);
+	char *noise;
+	mach_msg_type_number_t noise_len = 0;
+	struct procinfo *pi;
+	mach_msg_type_number_t pi_len = 0;
+	int info_flags = 0;
+	error_t err =
+		proc_getprocinfo (proc_server, inf->pid, &info_flags,
+				(procinfo_t *) &pi, &pi_len, &noise, &noise_len);
 
-  if (!err)
-    {
-      inf->stopped = !!(pi->state & PI_STOPPED);
-      inf->nomsg = !!(pi->state & PI_NOMSG);
-      if (inf->nomsg)
-	inf->traced = !!(pi->state & PI_TRACED);
-      vm_deallocate (mach_task_self (), (vm_address_t) pi, pi_len);
-      if (noise_len > 0)
-	vm_deallocate (mach_task_self (), (vm_address_t) noise, noise_len);
-    }
+	if (!err)
+	{
+		inf->stopped = !!(pi->state & PI_STOPPED);
+		inf->nomsg = !!(pi->state & PI_NOMSG);
+		if (inf->nomsg)
+			inf->traced = !!(pi->state & PI_TRACED);
+		vm_deallocate (mach_task_self (), (vm_address_t) pi, pi_len);
+		if (noise_len > 0)
+			vm_deallocate (mach_task_self (), (vm_address_t) noise, noise_len);
+	}
 }
 /* Deliver signal SIG to INF.  If INF is stopped, delivering a signal, even
    signal 0, will continue it.  INF is assumed to be in a paused state, and
    the resume_sc's of INF's threads may be affected.  */
-void
+	void
 inf_signal (struct inf *inf, enum gdb_signal sig)
 {
-  error_t err = 0;
-  int host_sig = gdb_signal_to_host (sig);
+	error_t err = 0;
+	int host_sig = gdb_signal_to_host (sig);
 
 #define NAME gdb_signal_to_name (sig)
 
-  if (host_sig >= _NSIG)
-    /* A mach exception.  Exceptions are encoded in the signal space by
-       putting them after _NSIG; this assumes they're positive (and not
-       extremely large)!  */
-    {
-      struct inf_wait *w = &inf->wait;
-
-      if (w->status.kind == TARGET_WAITKIND_STOPPED
-	  && w->status.value.sig == sig
-	  && w->thread && !w->thread->aborted)
-	/* We're passing through the last exception we received.  This is
-	   kind of bogus, because exceptions are per-thread whereas gdb
-	   treats signals as per-process.  We just forward the exception to
-	   the correct handler, even it's not for the same thread as TID --
-	   i.e., we pretend it's global.  */
+	if (host_sig >= _NSIG)
+		/* A mach exception.  Exceptions are encoded in the signal space by
+		   putting them after _NSIG; this assumes they're positive (and not
+		   extremely large)!  */
 	{
-	  struct exc_state *e = &w->exc;
+		struct inf_wait *w = &inf->wait;
 
-	  inf_debug (inf, "passing through exception:"
-		     " task = %d, thread = %d, exc = %d"
-		     ", code = %d, subcode = %d",
-		     w->thread->port, inf->task->port,
-		     e->exception, e->code, e->subcode);
-	  err =
-	    exception_raise_request (e->handler,
-				     e->reply, MACH_MSG_TYPE_MOVE_SEND_ONCE,
-				     w->thread->port, inf->task->port,
-				     e->exception, e->code, e->subcode);
+		if (w->status.kind == TARGET_WAITKIND_STOPPED
+				&& w->status.value.sig == sig
+				&& w->thread && !w->thread->aborted)
+			/* We're passing through the last exception we received.  This is
+			   kind of bogus, because exceptions are per-thread whereas gdb
+			   treats signals as per-process.  We just forward the exception to
+			   the correct handler, even it's not for the same thread as TID --
+			   i.e., we pretend it's global.  */
+		{
+			struct exc_state *e = &w->exc;
+
+			inf_debug (inf, "passing through exception:"
+					" task = %d, thread = %d, exc = %d"
+					", code = %d, subcode = %d",
+					w->thread->port, inf->task->port,
+					e->exception, e->code, e->subcode);
+			err =
+				exception_raise_request (e->handler,
+						e->reply, MACH_MSG_TYPE_MOVE_SEND_ONCE,
+						w->thread->port, inf->task->port,
+						e->exception, e->code, e->subcode);
+		}
+		else
+			error (_("Can't forward spontaneous exception (%s)."), NAME);
 	}
-      else
-	error (_("Can't forward spontaneous exception (%s)."), NAME);
-    }
-  else
-    /* A Unix signal.  */
-  if (inf->stopped)
-    /* The process is stopped and expecting a signal.  Just send off a
-       request and let it get handled when we resume everything.  */
-    {
-      inf_debug (inf, "sending %s to stopped process", NAME);
-      err =
-	INF_MSGPORT_RPC (inf,
-			 msg_sig_post_untraced_request (msgport,
+	else
+		/* A Unix signal.  */
+		if (inf->stopped)
+			/* The process is stopped and expecting a signal.  Just send off a
+			   request and let it get handled when we resume everything.  */
+		{
+			inf_debug (inf, "sending %s to stopped process", NAME);
+			err =
+				INF_MSGPORT_RPC (inf,
+						msg_sig_post_untraced_request (msgport,
 							inf->event_port,
-					       MACH_MSG_TYPE_MAKE_SEND_ONCE,
+							MACH_MSG_TYPE_MAKE_SEND_ONCE,
 							host_sig, 0,
 							refport));
-      if (!err)
-	/* Posting an untraced signal automatically continues it.
-	   We clear this here rather than when we get the reply
-	   because we'd rather assume it's not stopped when it
-	   actually is, than the reverse.  */
-	inf->stopped = 0;
-    }
-  else
-    /* It's not expecting it.  We have to let just the signal thread
-       run, and wait for it to get into a reasonable state before we
-       can continue the rest of the process.  When we finally resume the
-       process the signal we request will be the very first thing that
-       happens.  */
-    {
-      inf_debug (inf, "sending %s to unstopped process"
-		 " (so resuming signal thread)", NAME);
-      err =
-	INF_RESUME_MSGPORT_RPC (inf,
-				msg_sig_post_untraced (msgport, host_sig,
-						       0, refport));
-    }
+			if (!err)
+				/* Posting an untraced signal automatically continues it.
+				   We clear this here rather than when we get the reply
+				   because we'd rather assume it's not stopped when it
+				   actually is, than the reverse.  */
+				inf->stopped = 0;
+		}
+		else
+			/* It's not expecting it.  We have to let just the signal thread
+			   run, and wait for it to get into a reasonable state before we
+			   can continue the rest of the process.  When we finally resume the
+			   process the signal we request will be the very first thing that
+			   happens.  */
+		{
+			inf_debug (inf, "sending %s to unstopped process"
+					" (so resuming signal thread)", NAME);
+			err =
+				INF_RESUME_MSGPORT_RPC (inf,
+						msg_sig_post_untraced (msgport, host_sig,
+							0, refport));
+		}
 
-  if (err == EIEIO)
-    /* Can't do too much...  */
-    warning (_("Can't deliver signal %s: No signal thread."), NAME);
-  else if (err)
-    warning (_("Delivering signal %s: %s"), NAME, safe_strerror (err));
+	if (err == EIEIO)
+		/* Can't do too much...  */
+		warning (_("Can't deliver signal %s: No signal thread."), NAME);
+	else if (err)
+		warning (_("Delivering signal %s: %s"), NAME, safe_strerror (err));
 
 #undef NAME
 }
 /* Continue INF without delivering a signal.  This is meant to be used
    when INF does not have a message port.  */
-void
+	void
 inf_continue (struct inf *inf)
 {
-  process_t proc;
-  error_t err = proc_pid2proc (proc_server, inf->pid, &proc);
+	process_t proc;
+	error_t err = proc_pid2proc (proc_server, inf->pid, &proc);
 
-  if (!err)
-    {
-      inf_debug (inf, "continuing process");
-
-      err = proc_mark_cont (proc);
-      if (!err)
+	if (!err)
 	{
-	  struct proc *thread;
+		inf_debug (inf, "continuing process");
 
-	  for (thread = inf->threads; thread; thread = thread->next)
-	    thread_resume (thread->port);
+		err = proc_mark_cont (proc);
+		if (!err)
+		{
+			struct proc *thread;
 
-	  inf->stopped = 0;
+			for (thread = inf->threads; thread; thread = thread->next)
+				thread_resume (thread->port);
+
+			inf->stopped = 0;
+		}
 	}
-    }
 
-  if (err)
-    warning (_("Can't continue process: %s"), safe_strerror (err));
+	if (err)
+		warning (_("Can't continue process: %s"), safe_strerror (err));
 }
 /* Returns the number of messages queued for the receive right PORT.  */
-static mach_port_msgcount_t
+	static mach_port_msgcount_t
 port_msgs_queued (mach_port_t port)
 {
-  struct mach_port_status status;
-  error_t err =
-    mach_port_get_receive_status (mach_task_self (), port, &status);
+	struct mach_port_status status;
+	error_t err =
+		mach_port_get_receive_status (mach_task_self (), port, &status);
 
-  if (err)
-    return 0;
-  else
-    return status.mps_msgcount;
+	if (err)
+		return 0;
+	else
+		return status.mps_msgcount;
 }
 static void gnu_resume_1 (struct target_ops *ops,
 		ptid_t ptid, int step, enum gdb_signal sig)
@@ -1216,8 +1304,8 @@ static void gnu_resume_1 (struct target_ops *ops,
 	int resume_all;
 	struct inf *inf = gnu_current_inf;
 
-	  inf_debug0 (inf, "ptid = %s, step = %d, sig = %d",
-	     target_pid_to_str (ptid), step, sig);
+	inf_debug0 (inf, "ptid = %s, step = %d, sig = %d",
+			target_pid_to_str (ptid), step, sig);
 
 	inf_validate_procinfo (inf);
 
@@ -1234,8 +1322,8 @@ static void gnu_resume_1 (struct target_ops *ops,
 	{
 		proc_abort (inf->wait.thread, 1);
 		/*warning (_("Aborting %s with unforwarded exception %s."),*/
-				/*proc_string (inf->wait.thread),*/
-				/*gdb_signal_to_name (inf->wait.status.value.sig));*/
+		/*proc_string (inf->wait.thread),*/
+		/*gdb_signal_to_name (inf->wait.status.value.sig));*/
 	}
 
 	if (port_msgs_queued (inf->event_port))
@@ -1299,24 +1387,24 @@ static void gnu_resume (struct thread_resume *resume_info, size_t n)
 	gnu_debug0("in gnu_resume: ptid=%d, step=%d, signal=%d\n",ptid,step,signal);
 
 	/*my_resume();*/
-/*static void gnu_resume_1 (struct target_ops *ops,ptid_t ptid, int step, enum gdb_signal sig)*/
+	/*static void gnu_resume_1 (struct target_ops *ops,ptid_t ptid, int step, enum gdb_signal sig)*/
 	gnu_resume_1(NULL,ptid,step,signal);
 
 }
 
 void inf_suspend (struct inf *inf)
 {
-  struct proc *thread;
+	struct proc *thread;
 
-  inf_update_procs (inf);
+	inf_update_procs (inf);
 
-  for (thread = inf->threads; thread; thread = thread->next)
-    thread->sc = thread->pause_sc;
+	for (thread = inf->threads; thread; thread = thread->next)
+		thread->sc = thread->pause_sc;
 
-  if (inf->task)
-    inf->task->sc = inf->pause_sc;
+	if (inf->task)
+		inf->task->sc = inf->pause_sc;
 
-  inf_update_suspends (inf);
+	inf_update_suspends (inf);
 }
 
 static ptid_t gnu_wait_1 (ptid_t ptid,
@@ -1405,10 +1493,10 @@ rewait:
 
 	if (err == EMACH_RCV_INTERRUPTED)
 		printf("interrupted\n");
-		/*inf_debug (inf, "interrupted");*/
+	/*inf_debug (inf, "interrupted");*/
 	else if (err)
 		printf ("Couldn't wait for an event:\n");
-		/*error (_("Couldn't wait for an event: %s"), safe_strerror (err));*/
+	/*error (_("Couldn't wait for an event: %s"), safe_strerror (err));*/
 	else
 	{
 		struct
@@ -1554,10 +1642,10 @@ static ptid_t gnu_wait (ptid_t ptid,
    the GDB register N is stored.  */
 static int reg_offset[] =
 {
-  REG_OFFSET (eax), REG_OFFSET (ecx), REG_OFFSET (edx), REG_OFFSET (ebx),
-  REG_OFFSET (uesp), REG_OFFSET (ebp), REG_OFFSET (esi), REG_OFFSET (edi),
-  REG_OFFSET (eip), REG_OFFSET (efl), REG_OFFSET (cs), REG_OFFSET (ss),
-  REG_OFFSET (ds), REG_OFFSET (es), REG_OFFSET (fs), REG_OFFSET (gs)
+	REG_OFFSET (eax), REG_OFFSET (ecx), REG_OFFSET (edx), REG_OFFSET (ebx),
+	REG_OFFSET (uesp), REG_OFFSET (ebp), REG_OFFSET (esi), REG_OFFSET (edi),
+	REG_OFFSET (eip), REG_OFFSET (efl), REG_OFFSET (cs), REG_OFFSET (ss),
+	REG_OFFSET (ds), REG_OFFSET (es), REG_OFFSET (fs), REG_OFFSET (gs)
 };
 
 /* Offset to the greg_t location where REG is stored.  */
@@ -1567,99 +1655,99 @@ static int reg_offset[] =
    the GDB register N is stored.  */
 static int creg_offset[] =
 {
-  CREG_OFFSET (EAX), CREG_OFFSET (ECX), CREG_OFFSET (EDX), CREG_OFFSET (EBX),
-  CREG_OFFSET (UESP), CREG_OFFSET (EBP), CREG_OFFSET (ESI), CREG_OFFSET (EDI),
-  CREG_OFFSET (EIP), CREG_OFFSET (EFL), CREG_OFFSET (CS), CREG_OFFSET (SS),
-  CREG_OFFSET (DS), CREG_OFFSET (ES), CREG_OFFSET (FS), CREG_OFFSET (GS)
+	CREG_OFFSET (EAX), CREG_OFFSET (ECX), CREG_OFFSET (EDX), CREG_OFFSET (EBX),
+	CREG_OFFSET (UESP), CREG_OFFSET (EBP), CREG_OFFSET (ESI), CREG_OFFSET (EDI),
+	CREG_OFFSET (EIP), CREG_OFFSET (EFL), CREG_OFFSET (CS), CREG_OFFSET (SS),
+	CREG_OFFSET (DS), CREG_OFFSET (ES), CREG_OFFSET (FS), CREG_OFFSET (GS)
 };
 #define REG_ADDR(state, regnum) ((char *)(state) + reg_offset[regnum])
 #define CREG_ADDR(state, regnum) ((const char *)(state) + creg_offset[regnum])
 
 /* Return printable description of proc.  */
-char *
+	char *
 proc_string (struct proc *proc)
 {
-  static char tid_str[80];
+	static char tid_str[80];
 
-  if (proc_is_task (proc))
-    xsnprintf (tid_str, sizeof (tid_str), "process %d", proc->inf->pid);
-  else
-    xsnprintf (tid_str, sizeof (tid_str), "Thread %d.%d",
-	       proc->inf->pid, proc->tid);
-  return tid_str;
+	if (proc_is_task (proc))
+		xsnprintf (tid_str, sizeof (tid_str), "process %d", proc->inf->pid);
+	else
+		xsnprintf (tid_str, sizeof (tid_str), "Thread %d.%d",
+				proc->inf->pid, proc->tid);
+	return tid_str;
 }
 
-static void
+	static void
 fetch_fpregs (struct regcache *regcache, struct proc *thread)
 {
 	gnu_debug("fetch_fpregs() not support now\n");
 }
-static void
+	static void
 store_fpregs (const struct regcache *regcache, struct proc *thread, int regno)
 {
 
 	gnu_debug("store_fpregs() not support now\n");
 }
 /* Fetch register REGNO, or all regs if REGNO is -1.  */
-static void
+	static void
 gnu_fetch_registers_1 (struct target_ops *ops,
-		     struct regcache *regcache, int regno)
+		struct regcache *regcache, int regno)
 {
 #if 1
-  struct proc *thread;
+	struct proc *thread;
 
-  /* Make sure we know about new threads.  */
-  inf_update_procs (gnu_current_inf);
+	/* Make sure we know about new threads.  */
+	inf_update_procs (gnu_current_inf);
 
-  thread = inf_tid_to_thread (gnu_current_inf,
-			      gnu_get_tid (inferior_ptid));
-  if (!thread)
-    error (_("[gnu_fetch_registers_1]Can't fetch registers from thread %s: No such thread"),
-	   target_pid_to_str (inferior_ptid));
+	thread = inf_tid_to_thread (gnu_current_inf,
+			gnu_get_tid (inferior_ptid));
+	if (!thread)
+		error (_("[gnu_fetch_registers_1]Can't fetch registers from thread %s: No such thread"),
+				target_pid_to_str (inferior_ptid));
 
-  if (regno < I386_NUM_GREGS || regno == -1)
-    {
-      thread_state_t state;
-
-      /* This does the dirty work for us.  */
-      state = proc_get_state (thread, 0);
-      if (!state)
+	if (regno < I386_NUM_GREGS || regno == -1)
 	{
-	  warning (_("Couldn't fetch registers from %s"),
-		   proc_string (thread));
-		
-	  return;
+		thread_state_t state;
+
+		/* This does the dirty work for us.  */
+		state = proc_get_state (thread, 0);
+		if (!state)
+		{
+			warning (_("Couldn't fetch registers from %s"),
+					proc_string (thread));
+
+			return;
+		}
+
+		if (regno == -1)
+		{
+			int i;
+
+			proc_debug (thread, "fetching all register");
+
+			for (i = 0; i < I386_NUM_GREGS; i++)
+				/*regcache_raw_supply (regcache, i, REG_ADDR (state, i));*/
+				supply_register (regcache, i, REG_ADDR(state,i));
+			thread->fetched_regs = ~0;
+		}
+		else
+		{
+			/*proc_debug (thread, "fetching register %s",*/
+			/*gdbarch_register_name (get_regcache_arch (regcache),*/
+			/*regno));*/
+
+			/*regcache_raw_supply (regcache, regno,REG_ADDR (state, regno));*/
+			supply_register (regcache, regno, REG_ADDR(state,regno));
+			thread->fetched_regs |= (1 << regno);
+		}
 	}
 
-      if (regno == -1)
+	if (regno >= I386_NUM_GREGS || regno == -1)
 	{
-	  int i;
+		proc_debug (thread, "fetching floating-point registers");
 
-	  proc_debug (thread, "fetching all register");
-
-	  for (i = 0; i < I386_NUM_GREGS; i++)
-	    /*regcache_raw_supply (regcache, i, REG_ADDR (state, i));*/
-		supply_register (regcache, i, REG_ADDR(state,i));
-	  thread->fetched_regs = ~0;
+		fetch_fpregs (regcache, thread);
 	}
-      else
-	{
-	  /*proc_debug (thread, "fetching register %s",*/
-		      /*gdbarch_register_name (get_regcache_arch (regcache),*/
-					     /*regno));*/
-
-	  /*regcache_raw_supply (regcache, regno,REG_ADDR (state, regno));*/
-	supply_register (regcache, regno, REG_ADDR(state,regno));
-	  thread->fetched_regs |= (1 << regno);
-	}
-    }
-
-  if (regno >= I386_NUM_GREGS || regno == -1)
-    {
-      proc_debug (thread, "fetching floating-point registers");
-
-      fetch_fpregs (regcache, thread);
-    }
 #endif
 }
 void gnu_fetch_registers (struct regcache *regcache, int regno)
@@ -1670,102 +1758,102 @@ void gnu_fetch_registers (struct regcache *regcache, int regno)
 
 /* Store at least register REGNO, or all regs if REGNO == -1.  */
 //copy from i386gnu-nat.c
-static void
+	static void
 gnu_store_registers_1 (struct target_ops *ops,
-		     struct regcache *regcache, int regno)
+		struct regcache *regcache, int regno)
 {
 #if 1
-  struct proc *thread;
-  /*struct gdbarch *gdbarch = get_regcache_arch (regcache);*/
-  const struct target_desc *gdbarch = regcache->tdesc;
+	struct proc *thread;
+	/*struct gdbarch *gdbarch = get_regcache_arch (regcache);*/
+	const struct target_desc *gdbarch = regcache->tdesc;
 
-  /* Make sure we know about new threads.  */
-  inf_update_procs (gnu_current_inf);
+	/* Make sure we know about new threads.  */
+	inf_update_procs (gnu_current_inf);
 
-  thread = inf_tid_to_thread (gnu_current_inf,
-			      gnu_get_tid (inferior_ptid));
-  if (!thread)
-    error (_("Couldn't store registers into thread %s: No such thread"),
-	   target_pid_to_str (inferior_ptid));
+	thread = inf_tid_to_thread (gnu_current_inf,
+			gnu_get_tid (inferior_ptid));
+	if (!thread)
+		error (_("Couldn't store registers into thread %s: No such thread"),
+				target_pid_to_str (inferior_ptid));
 
-  if (regno < I386_NUM_GREGS || regno == -1)
-    {
-      thread_state_t state;
-      thread_state_data_t old_state;
-      int was_aborted = thread->aborted;
-      int was_valid = thread->state_valid;
-      int trace;
-
-      if (!was_aborted && was_valid)
-	memcpy (&old_state, &thread->state, sizeof (old_state));
-
-      state = proc_get_state (thread, 1);
-      if (!state)
+	if (regno < I386_NUM_GREGS || regno == -1)
 	{
-	  warning (_("Couldn't store registers into %s"),
-		   proc_string (thread));
-	  return;
-	}
+		thread_state_t state;
+		thread_state_data_t old_state;
+		int was_aborted = thread->aborted;
+		int was_valid = thread->state_valid;
+		int trace;
 
-      /* Save the T bit.  We might try to restore the %eflags register
-         below, but changing the T bit would seriously confuse GDB.  */
-      trace = ((struct i386_thread_state *)state)->efl & 0x100;
+		if (!was_aborted && was_valid)
+			memcpy (&old_state, &thread->state, sizeof (old_state));
 
-      if (!was_aborted && was_valid)
-	/* See which registers have changed after aborting the thread.  */
-	{
-	  int check_regno;
+		state = proc_get_state (thread, 1);
+		if (!state)
+		{
+			warning (_("Couldn't store registers into %s"),
+					proc_string (thread));
+			return;
+		}
 
-	  for (check_regno = 0; check_regno < I386_NUM_GREGS; check_regno++)
-	    if ((thread->fetched_regs & (1 << check_regno))
-		&& memcpy (REG_ADDR (&old_state, check_regno),
-			   REG_ADDR (state, check_regno),
-			   register_size (gdbarch, check_regno)))
-	      /* Register CHECK_REGNO has changed!  Ack!  */
-	      {
-		/*warning (_("Register %s changed after the thread was aborted"),*/
-			 /*gdbarch_register_name (gdbarch, check_regno));*/
-		if (regno >= 0 && regno != check_regno)
-		  /* Update GDB's copy of the register.  */
-		  /*regcache_raw_supply (regcache, check_regno,REG_ADDR (state, check_regno));*/
-		supply_register (regcache, check_regno, REG_ADDR(state,check_regno));
+		/* Save the T bit.  We might try to restore the %eflags register
+		   below, but changing the T bit would seriously confuse GDB.  */
+		trace = ((struct i386_thread_state *)state)->efl & 0x100;
+
+		if (!was_aborted && was_valid)
+			/* See which registers have changed after aborting the thread.  */
+		{
+			int check_regno;
+
+			for (check_regno = 0; check_regno < I386_NUM_GREGS; check_regno++)
+				if ((thread->fetched_regs & (1 << check_regno))
+						&& memcpy (REG_ADDR (&old_state, check_regno),
+							REG_ADDR (state, check_regno),
+							register_size (gdbarch, check_regno)))
+					/* Register CHECK_REGNO has changed!  Ack!  */
+				{
+					/*warning (_("Register %s changed after the thread was aborted"),*/
+					/*gdbarch_register_name (gdbarch, check_regno));*/
+					if (regno >= 0 && regno != check_regno)
+						/* Update GDB's copy of the register.  */
+						/*regcache_raw_supply (regcache, check_regno,REG_ADDR (state, check_regno));*/
+						supply_register (regcache, check_regno, REG_ADDR(state,check_regno));
+					else
+						warning (_("... also writing this register!  "
+									"Suspicious..."));
+				}
+		}
+
+		if (regno == -1)
+		{
+			int i;
+
+			proc_debug (thread, "storing all registers");
+
+			for (i = 0; i < I386_NUM_GREGS; i++)
+				/*if (REG_VALID == regcache_register_status (regcache, i))*/
+				/*regcache_raw_collect (regcache, i, REG_ADDR (state, i));*/
+				collect_register (regcache, i, REG_ADDR (state, i));
+		}
 		else
-		  warning (_("... also writing this register!  "
-			     "Suspicious..."));
-	      }
+		{
+			/*proc_debug (thread, "storing register %s",gdbarch_register_name (gdbarch, regno));*/
+
+			/*gdb_assert (REG_VALID == regcache_register_status (regcache, regno));*/
+			/*regcache_raw_collect (regcache, regno, REG_ADDR (state, regno));*/
+			collect_register (regcache, regno, REG_ADDR (state, regno));
+		}
+
+		/* Restore the T bit.  */
+		((struct i386_thread_state *)state)->efl &= ~0x100;
+		((struct i386_thread_state *)state)->efl |= trace;
 	}
 
-      if (regno == -1)
+	if (regno >= I386_NUM_GREGS || regno == -1)
 	{
-	  int i;
+		proc_debug (thread, "storing floating-point registers");
 
-	  proc_debug (thread, "storing all registers");
-
-	  for (i = 0; i < I386_NUM_GREGS; i++)
-	    /*if (REG_VALID == regcache_register_status (regcache, i))*/
-	      /*regcache_raw_collect (regcache, i, REG_ADDR (state, i));*/
-	      collect_register (regcache, i, REG_ADDR (state, i));
+		store_fpregs (regcache, thread, regno);
 	}
-      else
-	{
-	  /*proc_debug (thread, "storing register %s",gdbarch_register_name (gdbarch, regno));*/
-
-	  /*gdb_assert (REG_VALID == regcache_register_status (regcache, regno));*/
-	  /*regcache_raw_collect (regcache, regno, REG_ADDR (state, regno));*/
-	  collect_register (regcache, regno, REG_ADDR (state, regno));
-	}
-
-      /* Restore the T bit.  */
-      ((struct i386_thread_state *)state)->efl &= ~0x100;
-      ((struct i386_thread_state *)state)->efl |= trace;
-    }
-
-  if (regno >= I386_NUM_GREGS || regno == -1)
-    {
-      proc_debug (thread, "storing floating-point registers");
-
-      store_fpregs (regcache, thread, regno);
-    }
 #endif
 }
 void gnu_store_registers (struct regcache *regcache, int regno)
@@ -1777,46 +1865,46 @@ void gnu_store_registers (struct regcache *regcache, int regno)
 /* Read inferior task's LEN bytes from ADDR and copy it to MYADDR in
    gdb's address space.  Return 0 on failure; number of bytes read
    otherwise.  */
-int
+	int
 gnu_read_inferior (task_t task, CORE_ADDR addr, char *myaddr, int length)
 {
-  error_t err;
-  vm_address_t low_address = (vm_address_t) trunc_page (addr);
-  vm_size_t aligned_length =
-  (vm_size_t) round_page (addr + length) - low_address;
-  pointer_t copied;
-  int copy_count;
+	error_t err;
+	vm_address_t low_address = (vm_address_t) trunc_page (addr);
+	vm_size_t aligned_length =
+		(vm_size_t) round_page (addr + length) - low_address;
+	pointer_t copied;
+	int copy_count;
 
-  /* Get memory from inferior with page aligned addresses.  */
-  err = vm_read (task, low_address, aligned_length, &copied, &copy_count);
-  if (err)
-    return 0;
+	/* Get memory from inferior with page aligned addresses.  */
+	err = vm_read (task, low_address, aligned_length, &copied, &copy_count);
+	if (err)
+		return 0;
 
-  err = hurd_safe_copyin (myaddr, (void *) (addr - low_address + copied),
-			  length);
-  if (err)
-    {
-      warning (_("Read from inferior faulted: %s"), safe_strerror (err));
-      length = 0;
-    }
+	err = hurd_safe_copyin (myaddr, (void *) (addr - low_address + copied),
+			length);
+	if (err)
+	{
+		warning (_("Read from inferior faulted: %s"), safe_strerror (err));
+		length = 0;
+	}
 
-  err = vm_deallocate (mach_task_self (), copied, copy_count);
-  if (err)
-    warning (_("gnu_read_inferior vm_deallocate failed: %s"),
-	     safe_strerror (err));
+	err = vm_deallocate (mach_task_self (), copied, copy_count);
+	if (err)
+		warning (_("gnu_read_inferior vm_deallocate failed: %s"),
+				safe_strerror (err));
 
-  return length;
+	return length;
 }
 
 #define CHK_GOTO_OUT(str,ret) \
-  do if (ret != KERN_SUCCESS) { errstr = #str; goto out; } while(0)
+	do if (ret != KERN_SUCCESS) { errstr = #str; goto out; } while(0)
 
 struct vm_region_list
 {
-  struct vm_region_list *next;
-  vm_prot_t protection;
-  vm_address_t start;
-  vm_size_t length;
+	struct vm_region_list *next;
+	vm_prot_t protection;
+	vm_address_t start;
+	vm_size_t length;
 };
 /*struct obstack region_obstack;*/
 
@@ -1824,160 +1912,160 @@ struct vm_region_list
    task's address space.  */
 int gnu_write_inferior (task_t task, CORE_ADDR addr, char *myaddr, int length)
 {
-  error_t err = 0;
-  vm_address_t low_address = (vm_address_t) trunc_page (addr);
-  vm_size_t aligned_length =
-  (vm_size_t) round_page (addr + length) - low_address;
-  pointer_t copied;
-  int copy_count;
-  int deallocate = 0;
+	error_t err = 0;
+	vm_address_t low_address = (vm_address_t) trunc_page (addr);
+	vm_size_t aligned_length =
+		(vm_size_t) round_page (addr + length) - low_address;
+	pointer_t copied;
+	int copy_count;
+	int deallocate = 0;
 
-  char *errstr = "Bug in gnu_write_inferior";
+	char *errstr = "Bug in gnu_write_inferior";
 
-  struct vm_region_list *region_element;
-  struct vm_region_list *region_head = (struct vm_region_list *) NULL;
+	struct vm_region_list *region_element;
+	struct vm_region_list *region_head = (struct vm_region_list *) NULL;
 
-  /* Get memory from inferior with page aligned addresses.  */
-  err = vm_read (task,
-		 low_address,
-		 aligned_length,
-		 &copied,
-		 &copy_count);
-  CHK_GOTO_OUT ("gnu_write_inferior vm_read failed", err);
+	/* Get memory from inferior with page aligned addresses.  */
+	err = vm_read (task,
+			low_address,
+			aligned_length,
+			&copied,
+			&copy_count);
+	CHK_GOTO_OUT ("gnu_write_inferior vm_read failed", err);
 
-  deallocate++;
+	deallocate++;
 
-  err = hurd_safe_copyout ((void *) (addr - low_address + copied),
-			   myaddr, length);
-  CHK_GOTO_OUT ("Write to inferior faulted", err);
+	err = hurd_safe_copyout ((void *) (addr - low_address + copied),
+			myaddr, length);
+	CHK_GOTO_OUT ("Write to inferior faulted", err);
 
-  /*obstack_init (&region_obstack);*/
+	/*obstack_init (&region_obstack);*/
 
-  /* Do writes atomically.
-     First check for holes and unwritable memory.  */
-  {
-    vm_size_t remaining_length = aligned_length;
-    vm_address_t region_address = low_address;
+	/* Do writes atomically.
+	   First check for holes and unwritable memory.  */
+	{
+		vm_size_t remaining_length = aligned_length;
+		vm_address_t region_address = low_address;
 
-    struct vm_region_list *scan;
+		struct vm_region_list *scan;
 
-    while (region_address < low_address + aligned_length)
-      {
-	vm_prot_t protection;
-	vm_prot_t max_protection;
-	vm_inherit_t inheritance;
-	boolean_t shared;
-	mach_port_t object_name;
-	vm_offset_t offset;
-	vm_size_t region_length = remaining_length;
-	vm_address_t old_address = region_address;
+		while (region_address < low_address + aligned_length)
+		{
+			vm_prot_t protection;
+			vm_prot_t max_protection;
+			vm_inherit_t inheritance;
+			boolean_t shared;
+			mach_port_t object_name;
+			vm_offset_t offset;
+			vm_size_t region_length = remaining_length;
+			vm_address_t old_address = region_address;
 
-	err = vm_region (task,
-			 &region_address,
-			 &region_length,
-			 &protection,
-			 &max_protection,
-			 &inheritance,
-			 &shared,
-			 &object_name,
-			 &offset);
-	CHK_GOTO_OUT ("vm_region failed", err);
+			err = vm_region (task,
+					&region_address,
+					&region_length,
+					&protection,
+					&max_protection,
+					&inheritance,
+					&shared,
+					&object_name,
+					&offset);
+			CHK_GOTO_OUT ("vm_region failed", err);
 
-	/* Check for holes in memory.  */
-	if (old_address != region_address)
-	  {
-	    warning (_("No memory at 0x%x. Nothing written"),
-		     old_address);
-	    err = KERN_SUCCESS;
-	    length = 0;
-	    goto out;
-	  }
+			/* Check for holes in memory.  */
+			if (old_address != region_address)
+			{
+				warning (_("No memory at 0x%x. Nothing written"),
+						old_address);
+				err = KERN_SUCCESS;
+				length = 0;
+				goto out;
+			}
 
-	if (!(max_protection & VM_PROT_WRITE))
-	  {
-	    warning (_("Memory at address 0x%x is unwritable. "
-		       "Nothing written"),
-		     old_address);
-	    err = KERN_SUCCESS;
-	    length = 0;
-	    goto out;
-	  }
+			if (!(max_protection & VM_PROT_WRITE))
+			{
+				warning (_("Memory at address 0x%x is unwritable. "
+							"Nothing written"),
+						old_address);
+				err = KERN_SUCCESS;
+				length = 0;
+				goto out;
+			}
 
-	/* Chain the regions for later use.  */
-	/*region_element =*/
-	  /*(struct vm_region_list *)*/
-	  /*obstack_alloc (&region_obstack, sizeof (struct vm_region_list));*/
-	region_element =
-	  (struct vm_region_list *)
-	  malloc(sizeof (struct vm_region_list));
+			/* Chain the regions for later use.  */
+			/*region_element =*/
+			/*(struct vm_region_list *)*/
+			/*obstack_alloc (&region_obstack, sizeof (struct vm_region_list));*/
+			region_element =
+				(struct vm_region_list *)
+				malloc(sizeof (struct vm_region_list));
 
-	region_element->protection = protection;
-	region_element->start = region_address;
-	region_element->length = region_length;
+			region_element->protection = protection;
+			region_element->start = region_address;
+			region_element->length = region_length;
 
-	/* Chain the regions along with protections.  */
-	region_element->next = region_head;
-	region_head = region_element;
+			/* Chain the regions along with protections.  */
+			region_element->next = region_head;
+			region_head = region_element;
 
-	region_address += region_length;
-	remaining_length = remaining_length - region_length;
-      }
+			region_address += region_length;
+			remaining_length = remaining_length - region_length;
+		}
 
-    /* If things fail after this, we give up.
-       Somebody is messing up inferior_task's mappings.  */
+		/* If things fail after this, we give up.
+		   Somebody is messing up inferior_task's mappings.  */
 
-    /* Enable writes to the chained vm regions.  */
-    for (scan = region_head; scan; scan = scan->next)
-      {
-	if (!(scan->protection & VM_PROT_WRITE))
-	  {
-	    err = vm_protect (task,
-			      scan->start,
-			      scan->length,
-			      FALSE,
-			      scan->protection | VM_PROT_WRITE);
-	    CHK_GOTO_OUT ("vm_protect: enable write failed", err);
-	  }
-      }
+		/* Enable writes to the chained vm regions.  */
+		for (scan = region_head; scan; scan = scan->next)
+		{
+			if (!(scan->protection & VM_PROT_WRITE))
+			{
+				err = vm_protect (task,
+						scan->start,
+						scan->length,
+						FALSE,
+						scan->protection | VM_PROT_WRITE);
+				CHK_GOTO_OUT ("vm_protect: enable write failed", err);
+			}
+		}
 
-    err = vm_write (task,
-		    low_address,
-		    copied,
-		    aligned_length);
-    CHK_GOTO_OUT ("vm_write failed", err);
+		err = vm_write (task,
+				low_address,
+				copied,
+				aligned_length);
+		CHK_GOTO_OUT ("vm_write failed", err);
 
-    /* Set up the original region protections, if they were changed.  */
-    for (scan = region_head; scan; scan = scan->next)
-      {
-	if (!(scan->protection & VM_PROT_WRITE))
-	  {
-	    err = vm_protect (task,
-			      scan->start,
-			      scan->length,
-			      FALSE,
-			      scan->protection);
-	    CHK_GOTO_OUT ("vm_protect: enable write failed", err);
-	  }
-      }
-  }
+		/* Set up the original region protections, if they were changed.  */
+		for (scan = region_head; scan; scan = scan->next)
+		{
+			if (!(scan->protection & VM_PROT_WRITE))
+			{
+				err = vm_protect (task,
+						scan->start,
+						scan->length,
+						FALSE,
+						scan->protection);
+				CHK_GOTO_OUT ("vm_protect: enable write failed", err);
+			}
+		}
+	}
 
 out:
-  if (deallocate)
-    {
-      /*obstack_free (&region_obstack, 0);*/
+	if (deallocate)
+	{
+		/*obstack_free (&region_obstack, 0);*/
 
-      (void) vm_deallocate (mach_task_self (),
-			    copied,
-			    copy_count);
-    }
+		(void) vm_deallocate (mach_task_self (),
+				copied,
+				copy_count);
+	}
 
-  if (err != KERN_SUCCESS)
-    {
-      warning (_("%s: %s"), errstr, mach_error_string (err));
-      return 0;
-    }
+	if (err != KERN_SUCCESS)
+	{
+		warning (_("%s: %s"), errstr, mach_error_string (err));
+		return 0;
+	}
 
-  return length;
+	return length;
 }
 static int gnu_read_memory (CORE_ADDR addr, unsigned char *myaddr, int length)
 {
