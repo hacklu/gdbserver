@@ -50,14 +50,146 @@
 mig_internal void _Xproc_setmsgport_reply
 	(mach_msg_header_t *InHeadP, mach_msg_header_t *OutHeadP)
 {
-	return ;
+	typedef struct {
+		mach_msg_header_t Head;
+		mach_msg_type_t return_codeType;
+		kern_return_t return_code;
+		mach_msg_type_t oldmsgportType;
+		mach_port_t oldmsgport;
+	} Request;
+
+	typedef struct {
+		mach_msg_header_t Head;
+		mach_msg_type_t RetCodeType;
+		kern_return_t RetCode;
+	} Reply;
+
+	register Request *In0P = (Request *) InHeadP;
+	register Reply *OutP = (Reply *) OutHeadP;
+	mig_external kern_return_t S_proc_setmsgport_reply
+		(mach_port_t reply_port, kern_return_t return_code, mach_port_t oldmsgport);
+
+	auto const mach_msg_type_t return_codeCheck = {
+		/* msgt_name = */		2,
+		/* msgt_size = */		32,
+		/* msgt_number = */		1,
+		/* msgt_inline = */		TRUE,
+		/* msgt_longform = */		FALSE,
+		/* msgt_deallocate = */		FALSE,
+		/* msgt_unused = */		0
+	};
+
+	auto const mach_msg_type_t oldmsgportCheck = {
+		/* msgt_name = */		17,
+		/* msgt_size = */		32,
+		/* msgt_number = */		1,
+		/* msgt_inline = */		TRUE,
+		/* msgt_longform = */		FALSE,
+		/* msgt_deallocate = */		FALSE,
+		/* msgt_unused = */		0
+	};
+
+	if (In0P->Head.msgh_size == sizeof (Reply)
+	    && ! (In0P->Head.msgh_bits & MACH_MSGH_BITS_COMPLEX)
+	    && ! BAD_TYPECHECK(&In0P->return_codeType, &return_codeCheck)
+	    && In0P->return_code != 0)
+	  /* Error return, only the error code argument is passed.  */
+	  {
+	    kern_return_t (*sfun)(mach_port_t, kern_return_t, mach_port_t) = S_proc_setmsgport_reply;
+	    OutP->RetCode = (*(kern_return_t (*)(mach_port_t, kern_return_t))sfun) (In0P->Head.msgh_request_port, In0P->return_code);
+	    return;
+	  }
+
+#if	TypeCheck
+	if ((In0P->Head.msgh_size != 40) ||
+	    !(In0P->Head.msgh_bits & MACH_MSGH_BITS_COMPLEX))
+		{ OutP->RetCode = MIG_BAD_ARGUMENTS; return; }
+#endif	/* TypeCheck */
+
+#if	TypeCheck
+	if (BAD_TYPECHECK(&In0P->return_codeType, &return_codeCheck))
+		{ OutP->RetCode = MIG_BAD_ARGUMENTS; return; }
+#endif	/* TypeCheck */
+
+#if	TypeCheck
+	if (BAD_TYPECHECK(&In0P->oldmsgportType, &oldmsgportCheck))
+		{ OutP->RetCode = MIG_BAD_ARGUMENTS; return; }
+#endif	/* TypeCheck */
+
+	OutP->RetCode = S_proc_setmsgport_reply(In0P->Head.msgh_request_port, In0P->return_code, In0P->oldmsgport);
 }
 
 /* SimpleRoutine proc_getmsgport_reply */
 mig_internal void _Xproc_getmsgport_reply
 	(mach_msg_header_t *InHeadP, mach_msg_header_t *OutHeadP)
 {
-	return ;
+	typedef struct {
+		mach_msg_header_t Head;
+		mach_msg_type_t return_codeType;
+		kern_return_t return_code;
+		mach_msg_type_t msgportsType;
+		mach_port_t msgports;
+	} Request;
+
+	typedef struct {
+		mach_msg_header_t Head;
+		mach_msg_type_t RetCodeType;
+		kern_return_t RetCode;
+	} Reply;
+
+	register Request *In0P = (Request *) InHeadP;
+	register Reply *OutP = (Reply *) OutHeadP;
+	mig_external kern_return_t S_proc_getmsgport_reply
+		(mach_port_t reply_port, kern_return_t return_code, mach_port_t msgports);
+
+	auto const mach_msg_type_t return_codeCheck = {
+		/* msgt_name = */		2,
+		/* msgt_size = */		32,
+		/* msgt_number = */		1,
+		/* msgt_inline = */		TRUE,
+		/* msgt_longform = */		FALSE,
+		/* msgt_deallocate = */		FALSE,
+		/* msgt_unused = */		0
+	};
+
+	auto const mach_msg_type_t msgportsCheck = {
+		/* msgt_name = */		17,
+		/* msgt_size = */		32,
+		/* msgt_number = */		1,
+		/* msgt_inline = */		TRUE,
+		/* msgt_longform = */		FALSE,
+		/* msgt_deallocate = */		FALSE,
+		/* msgt_unused = */		0
+	};
+
+	if (In0P->Head.msgh_size == sizeof (Reply)
+	    && ! (In0P->Head.msgh_bits & MACH_MSGH_BITS_COMPLEX)
+	    && ! BAD_TYPECHECK(&In0P->return_codeType, &return_codeCheck)
+	    && In0P->return_code != 0)
+	  /* Error return, only the error code argument is passed.  */
+	  {
+	    kern_return_t (*sfun)(mach_port_t, kern_return_t, mach_port_t) = S_proc_getmsgport_reply;
+	    OutP->RetCode = (*(kern_return_t (*)(mach_port_t, kern_return_t))sfun) (In0P->Head.msgh_request_port, In0P->return_code);
+	    return;
+	  }
+
+#if	TypeCheck
+	if ((In0P->Head.msgh_size != 40) ||
+	    !(In0P->Head.msgh_bits & MACH_MSGH_BITS_COMPLEX))
+		{ OutP->RetCode = MIG_BAD_ARGUMENTS; return; }
+#endif	/* TypeCheck */
+
+#if	TypeCheck
+	if (BAD_TYPECHECK(&In0P->return_codeType, &return_codeCheck))
+		{ OutP->RetCode = MIG_BAD_ARGUMENTS; return; }
+#endif	/* TypeCheck */
+
+#if	TypeCheck
+	if (BAD_TYPECHECK(&In0P->msgportsType, &msgportsCheck))
+		{ OutP->RetCode = MIG_BAD_ARGUMENTS; return; }
+#endif	/* TypeCheck */
+
+	OutP->RetCode = S_proc_getmsgport_reply(In0P->Head.msgh_request_port, In0P->return_code, In0P->msgports);
 }
 
 /* SimpleRoutine proc_wait_reply */

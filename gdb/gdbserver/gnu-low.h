@@ -33,7 +33,6 @@ struct regs_info
 #endif
 };
 
-
 #define ptid_of(proc) ((proc)->head.id)
 #define pid_of(proc) ptid_get_pid ((proc)->head.id)
 #define lwpid_of(proc) ptid_get_lwp ((proc)->head.id)
@@ -44,7 +43,6 @@ struct regs_info
 			      find_inferior_id (&all_threads,		\
 						get_lwp (proc)->head.id))
 
-//add by hacklu
 #define PROC_TID_TASK 	(-1)
 #define THREAD_STATE_FLAVOR		i386_REGS_SEGS_STATE
 #define THREAD_STATE_SIZE		i386_THREAD_STATE_COUNT
@@ -224,6 +222,5 @@ static void inf_validate_procinfo (struct inf *inf);
 static ptid_t gnu_ptid_build(int pid,long lwp,long tid);
 static long gnu_get_tid(ptid_t ptid);
 
-
-//add for temp erase warning
+//add for erase warning
 extern const char * host_address_to_string (const void *addr);
