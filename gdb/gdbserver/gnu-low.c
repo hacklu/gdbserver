@@ -1097,26 +1097,55 @@ static int gnu_attach (unsigned long pid)
 
 static int gnu_kill (int pid)
 {
-	return -1;
+	struct proc *task = gnu_current_inf->task;
+	struct process_info *process;
+
+	process = find_process_pid (pid);
+
+	if (task)
+	{
+		proc_debug (task, "terminating...");
+		task_terminate (task->port);
+		inf_set_pid (gnu_current_inf, -1);
+	}
+	the_target->mourn(process);
+	return 0;
 }
 
 static int gnu_detach(int pid)
 {
-	return -1;
+	struct process_info *process;
+
+	process = find_process_pid (pid);
+	if (process == NULL)
+		return -1;
+
+	inf_detach (gnu_current_inf);
+
+	inferior_ptid = null_ptid;
+	the_target->mourn(process);
+	return 0;
 }
 
 
 static void gnu_mourn (struct process_info *process)
 {
+	/* Free our private data.  */
+	free (process->private);
+	process->private = NULL;
+
+	clear_inferiors ();
 }
 
 static void gnu_join(int pid)
 {
+	/* doesn't need*/
 }
 
 static int gnu_thread_alive (ptid_t ptid)
 {
-	return -1;
+	/* this function is copyed from lynx-low.c*/
+	return (find_thread_ptid (ptid) != NULL);
 }
 
 
