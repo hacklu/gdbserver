@@ -2016,7 +2016,7 @@ static int gnu_read_memory (CORE_ADDR addr, unsigned char *myaddr, int length)
 		return 0;
 	ret = gnu_read_inferior(task,addr,myaddr,length);
 	if(length!=ret){
-		printf("gnu_read_inferior,length=%d, but return %d\n",length,ret);
+		gnu_debug("gnu_read_inferior,length=%d, but return %d\n",length,ret);
 		return -1;
 	}
 	return 0;
@@ -2043,25 +2043,6 @@ static void gnu_request_interrupt (void)
 {
 	printf("gnu_request_interrupt not support!\n");
 	exit(-1);
-}
-
-
-void _initialize_gnu_nat (void)
-{
-	proc_server = getproc ();
-}
-
-static void initialize_low_arch()
-{
-	init_registers_i386 ();
-	gnu_tdesc = tdesc_i386;
-}
-
-void initialize_low(void)
-{
-	set_target_ops (&gnu_target_ops);
-	initialize_low_arch ();
-	_initialize_gnu_nat();
 }
 
 /* Helper function for child_wait and the derivatives of child_wait.
@@ -2137,7 +2118,7 @@ retry:
 			error (_("Additional task suspend count left untouched."));
 #endif
 
-		printf("need fix!!!!!!!!!!!!!!!!!!!!!\n");
+		//need fix!
 		inf->task->cur_sc = suspend_count;
 	}
 }
@@ -2455,3 +2436,20 @@ static struct target_ops gnu_target_ops = {
 	NULL,  /* supports_multi_process */
 	NULL,  /* handle_monitor_command */
 };
+void _initialize_gnu_nat (void)
+{
+	proc_server = getproc ();
+}
+
+static void initialize_low_arch()
+{
+	init_registers_i386 ();
+	gnu_tdesc = tdesc_i386;
+}
+
+void initialize_low(void)
+{
+	set_target_ops (&gnu_target_ops);
+	initialize_low_arch ();
+	_initialize_gnu_nat();
+}
