@@ -2490,43 +2490,39 @@ error_t do_mach_notify_dead_name (mach_port_t notify, mach_port_t dead_port)
 
 	return 0;
 }
+static error_t ill_rpc (char *fun)
+{
+  warning (_("illegal rpc: %s"), fun);
+  return 0;
+}
+	error_t
 do_mach_notify_no_senders (mach_port_t notify, mach_port_mscount_t count)
 {
-	printf("bug\n");
-	return -1;
-	/*return ill_rpc ("do_mach_notify_no_senders");*/
+	return ill_rpc ("do_mach_notify_no_senders");
 }
 
 	error_t
 do_mach_notify_port_deleted (mach_port_t notify, mach_port_t name)
 {
-	printf("bug\n");
-	return -1;
-	/*return ill_rpc ("do_mach_notify_port_deleted");*/
+	return ill_rpc ("do_mach_notify_port_deleted");
 }
 
 	error_t
 do_mach_notify_msg_accepted (mach_port_t notify, mach_port_t name)
 {
-	printf("bug\n");
-	return -1;
-	/*return ill_rpc ("do_mach_notify_msg_accepted");*/
+	return ill_rpc ("do_mach_notify_msg_accepted");
 }
 
 	error_t
 do_mach_notify_port_destroyed (mach_port_t notify, mach_port_t name)
 {
-	printf("bug\n");
-	return -1;
-	/*return ill_rpc ("do_mach_notify_port_destroyed");*/
+	return ill_rpc ("do_mach_notify_port_destroyed");
 }
 
 	error_t
 do_mach_notify_send_once (mach_port_t notify)
 {
-	printf("bug\n");
-	return -1;
-	/*return ill_rpc ("do_mach_notify_send_once");*/
+	return ill_rpc ("do_mach_notify_send_once");
 }
 static struct target_ops gnu_target_ops = {
 	gnu_create_inferior,
