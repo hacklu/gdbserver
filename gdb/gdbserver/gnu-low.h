@@ -184,7 +184,6 @@ struct inf
 };
 
 /* Forward decls */
-
 struct inf *make_inf ();
 void inf_clear_wait (struct inf *inf);
 void inf_cleanup (struct inf *inf);
@@ -206,7 +205,7 @@ void inf_detach (struct inf *inf);
 void inf_attach (struct inf *inf, int pid);
 void inf_signal (struct inf *inf, enum gdb_signal sig);
 void inf_continue (struct inf *inf);
-
+int inf_update_procs (struct inf *inf);
 
 void proc_abort (struct proc *proc, int force);
 struct proc *make_proc (struct inf *inf, mach_port_t port, int tid);
@@ -218,4 +217,13 @@ static mach_port_t _proc_get_exc_port (struct proc *proc);
 void proc_steal_exc_port (struct proc *proc, mach_port_t exc_port);
 void proc_restore_exc_port (struct proc *proc);
 int proc_trace (struct proc *proc, int set);
+static void inf_validate_task_sc (struct inf *inf);
+static void inf_validate_procinfo (struct inf *inf);
 
+//gdbserver use ptid_t not the same as gdb does!
+static ptid_t gnu_ptid_build(int pid,long lwp,long tid);
+static long gnu_get_tid(ptid_t ptid);
+
+
+//add for temp erase warning
+extern const char * host_address_to_string (const void *addr);

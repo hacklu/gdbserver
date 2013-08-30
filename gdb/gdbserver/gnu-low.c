@@ -29,49 +29,7 @@ int proc_wait_pid = 0;
 /* The number of wait requests we've sent, and expect replies from.  */
 int proc_waits_pending = 0;
 
-/* Forward decls */
-
-struct inf *make_inf ();
-void inf_clear_wait (struct inf *inf);
-void inf_cleanup (struct inf *inf);
-void inf_startup (struct inf *inf, int pid);
-int inf_update_suspends (struct inf *inf);
-void inf_set_pid (struct inf *inf, pid_t pid);
-void inf_validate_procs (struct inf *inf);
-void inf_steal_exc_ports (struct inf *inf);
-void inf_restore_exc_ports (struct inf *inf);
-struct proc *inf_tid_to_proc (struct inf *inf, int tid);
-void inf_set_threads_resume_sc (struct inf *inf,
-				struct proc *run_thread,
-				int run_others);
-int inf_set_threads_resume_sc_for_signal_thread (struct inf *inf);
-void inf_suspend (struct inf *inf);
-void inf_resume (struct inf *inf);
-void inf_set_step_thread (struct inf *inf, struct proc *proc);
-void inf_detach (struct inf *inf);
-void inf_attach (struct inf *inf, int pid);
-void inf_signal (struct inf *inf, enum gdb_signal sig);
-void inf_continue (struct inf *inf);
-
-void proc_abort (struct proc *proc, int force);
-struct proc *make_proc (struct inf *inf, mach_port_t port, int tid);
-struct proc *_proc_free (struct proc *proc);
-int proc_update_sc (struct proc *proc);
-error_t proc_get_exception_port (struct proc *proc, mach_port_t * port);
-error_t proc_set_exception_port (struct proc *proc, mach_port_t port);
-static mach_port_t _proc_get_exc_port (struct proc *proc);
-void proc_steal_exc_port (struct proc *proc, mach_port_t exc_port);
-void proc_restore_exc_port (struct proc *proc);
-int proc_trace (struct proc *proc, int set);
-static void inf_validate_task_sc (struct inf *inf);
-static void inf_validate_procinfo (struct inf *inf);
-
-//gdbserver use ptid_t not the same as gdb does!
-static ptid_t gnu_ptid_build(int pid,long lwp,long tid);
-static int gnu_get_pid(ptid_t ptid);
-static long gnu_get_tid(ptid_t ptid);
-
-int using_threads=1; //!!!!!hacklu !!!
+int using_threads=1; 
 
 struct inf* gnu_current_inf=NULL;
 struct inf* waiting_inf=NULL;
@@ -105,8 +63,6 @@ struct process_info_private
 	struct inf * inf;
 };
 
-
-
 #ifndef PIDGET
 #define PIDGET(PTID) (ptid_get_pid (PTID))
 #define TIDGET(PTID) (ptid_get_lwp (PTID))
@@ -114,16 +70,6 @@ struct process_info_private
 #endif
 
 static int debug_flags=0;
-
-#define inf_debug0(_inf, msg, args...) \
-  do { struct inf *__inf = (_inf); \
-       debug0 ("{inf %d %s}: " msg, __inf->pid, \
-       host_address_to_string (__inf) , ##args); } while (0)
-
-#define debug0(msg, args...) \
- do { if (1) \
-        printf ("%s:%d: " msg "\r\n", \
-			    __FILE__ , __LINE__ , ##args); } while (0)
 
 #define inf_debug(_inf, msg, args...) \
   do { struct inf *__inf = (_inf); \
@@ -140,8 +86,6 @@ static int debug_flags=0;
  do { if (debug_flags) \
         printf ("%s:%d: " msg "\r\n", \
 			    __FILE__ , __LINE__ , ##args); } while (0)
-/*#define proc_debug(_proc, msg, args...) \*/
-	/*do {}while(0);*/
 #ifndef safe_strerror 
 #define safe_strerror(err) \
 	"XXXX"
@@ -154,19 +98,6 @@ gnu_debug (char *string, ...)
 
   if (!debug_flags)
     return;
-
-  va_start (args, string);
-  fprintf (stderr, "DEBUG(gnu): ");
-  vfprintf (stderr, string, args);
-  fprintf (stderr, "\n");
-  va_end (args);
-}
-static void
-gnu_debug0 (char *string, ...)
-{
-  va_list args;
-
-
   va_start (args, string);
   fprintf (stderr, "DEBUG(gnu): ");
   vfprintf (stderr, string, args);
@@ -232,10 +163,6 @@ int __proc_pid (struct proc *proc)
 static ptid_t gnu_ptid_build(int pid,long lwp,long tid)
 {
 	return ptid_build(pid,tid,0);
-}
-static int gnu_get_pid(ptid_t ptid)
-{
-	return ptid_get_pid(ptid);
 }
 static long gnu_get_tid(ptid_t ptid)
 {
@@ -747,7 +674,6 @@ void inf_validate_procs (struct inf *inf)
 	  {
 	    proc_debug (thread, "died!");
 
-	    //add by hacklu
 	    ptid_t ptid;
 	    ptid = gnu_ptid_build (inf->pid, 0, thread->tid);
 	    if(find_thread_ptid(ptid))
@@ -799,7 +725,7 @@ void inf_validate_procs (struct inf *inf)
 	    {
 		    gnu_debug("New thread, pid=%d, tid=%d\n",inf->pid,thread->tid);
 		    add_thread (ptid, thread);
-		    inferior_ptid = ptid; //edit by hacklu. need fix!!!!!!!!!!!!!
+		    inferior_ptid = ptid; // need fix!!!!!!!!!!!!!
 	    }
 	  }
       }
@@ -1020,7 +946,6 @@ static struct process_info * gnu_add_process (int pid, int attached)
 static int gnu_create_inferior (char *program, char **allargs)
 {
 	int pid;
-	ptid_t ptid;
 	pid = fork ();
 	if (pid < 0)
 		perror_with_name ("fork");
@@ -1055,7 +980,7 @@ static int inf_pick_first_thread (void)
 }
 static int gnu_attach (unsigned long pid)
 {
-	return -1;
+	return -1; //not support now
 	struct inf *inf = cur_inf ();
 	/*struct inferior *inferior;*/
 
@@ -1066,30 +991,14 @@ static int gnu_attach (unsigned long pid)
 
 	inf_attach (inf, pid);
 
-
-	/*inferior = current_inferior ;*/
-	/*inferior_appeared (inferior, pid);*/
-	/*inferior->attach_flag = 1;*/
-
 	inf_update_procs (inf);
 
 	inferior_ptid = gnu_ptid_build (pid, 0, inf_pick_first_thread ());
 
-	/* We have to initialize the terminal settings now, since the code
-	   below might try to restore them.  */
-	/*target_terminal_init ();*/
-
-	/* If the process was stopped before we attached, make it continue the next
-	   time the user does a continue.  */
 	inf_validate_procinfo (inf);
-
-	/*inf_update_signal_thread (inf);*/
 	inf->signal_thread = inf->threads ? inf->threads->next : 0;
 	inf_set_traced (inf, inf->want_signals);
 
-#if 0				/* Do we need this?  */
-	renumber_threads (0);		/* Give our threads reasonable names.  */
-#endif
 	gnu_add_process(pid,1);
 	add_thread (inferior_ptid, NULL);
 	return 0;
@@ -1333,7 +1242,7 @@ static void gnu_resume_1 (struct target_ops *ops,
 	int resume_all;
 	struct inf *inf = gnu_current_inf;
 
-	inf_debug0 (inf, "ptid = %s, step = %d, sig = %d",
+	inf_debug (inf, "ptid = %s, step = %d, sig = %d",
 			target_pid_to_str (ptid), step, sig);
 
 	inf_validate_procinfo (inf);
@@ -1413,7 +1322,7 @@ static void gnu_resume (struct thread_resume *resume_info, size_t n)
 
 	regcache_invalidate ();
 
-	gnu_debug0("in gnu_resume: ptid=%d, step=%d, signal=%d\n",ptid,step,signal);
+	gnu_debug("in gnu_resume: ptid=%d, step=%d, signal=%d\n",ptid,step,signal);
 
 	/*my_resume();*/
 	/*static void gnu_resume_1 (struct target_ops *ops,ptid_t ptid, int step, enum gdb_signal sig)*/
@@ -1468,7 +1377,7 @@ static ptid_t gnu_wait_1 (ptid_t ptid,
 
 	waiting_inf = inf;
 
-	inf_debug0 (inf, "waiting for: %s", target_pid_to_str (ptid));
+	inf_debug (inf, "waiting for: %s", target_pid_to_str (ptid));
 
 rewait:
 	if (proc_wait_pid != inf->pid && !inf->no_wait)
@@ -1637,7 +1546,7 @@ rewait:
 		inf_update_suspends (inf);
 	}
 
-	inf_debug0 (inf, "returning ptid = %s, status = %s (%d)",
+	inf_debug (inf, "returning ptid = %s, status = %s (%d)",
 			target_pid_to_str (ptid),
 			status->kind == TARGET_WAITKIND_EXITED ? "EXITED"
 			: status->kind == TARGET_WAITKIND_STOPPED ? "STOPPED"
@@ -1895,7 +1804,7 @@ void gnu_store_registers (struct regcache *regcache, int regno)
    gdb's address space.  Return 0 on failure; number of bytes read
    otherwise.  */
 	int
-gnu_read_inferior (task_t task, CORE_ADDR addr, char *myaddr, int length)
+gnu_read_inferior (task_t task, CORE_ADDR addr,unsigned char *myaddr, int length)
 {
 	error_t err;
 	vm_address_t low_address = (vm_address_t) trunc_page (addr);
@@ -1939,7 +1848,7 @@ struct vm_region_list
 
 /* Write gdb's LEN bytes from MYADDR and copy it to ADDR in inferior
    task's address space.  */
-int gnu_write_inferior (task_t task, CORE_ADDR addr, char *myaddr, int length)
+int gnu_write_inferior (task_t task, CORE_ADDR addr, const char *myaddr, int length)
 {
 	error_t err = 0;
 	vm_address_t low_address = (vm_address_t) trunc_page (addr);
@@ -2098,44 +2007,31 @@ out:
 }
 static int gnu_read_memory (CORE_ADDR addr, unsigned char *myaddr, int length)
 {
-	int ret;
+	int ret=0;
 	task_t task = (gnu_current_inf
 			? (gnu_current_inf->task
 				? gnu_current_inf->task->port : 0)
 			: 0);
 	if (task == MACH_PORT_NULL)
 		return 0;
-	/*gnu_debug0("[gnu_read_memory]:addr=%p,length=%d\n",addr,length);*/
 	ret = gnu_read_inferior(task,addr,myaddr,length);
 	if(length!=ret){
 		printf("gnu_read_inferior,length=%d, but return %d\n",length,ret);
 		return -1;
 	}
 	return 0;
-	/*return 0;*/
 }
 
 static int gnu_write_memory (CORE_ADDR addr, const unsigned char *myaddr, int length)
 {
-	int ret;
+	int ret=0;
 	task_t task = (gnu_current_inf
 			? (gnu_current_inf->task
 				? gnu_current_inf->task->port : 0)
 			: 0);
 	if (task == MACH_PORT_NULL)
 		return 0;
-	/*gnu_debug("[gnu_write_memory]:addr=0x%p,length=%d\n",addr,length);*/
-
-	/*unsigned char data[100];*/
-	/*gnu_read_inferior(task,addr,data,4);*/
-	/*printf("before write, read data=%02x %02x %02x %02x\n",data[0],data[1],data[2],data[3]);*/
-
 	ret = gnu_write_inferior(task,addr,myaddr,length);
-	/*gnu_debug("gnu_write_inferior() addr=%p,data=%02x,length=%d\n",addr,*myaddr,length);*/
-
-	/*gnu_read_inferior(task,addr,data,4);*/
-	/*printf("after write, read data=%02x %02x %02x %02x\n",data[0],data[1],data[2],data[3]);*/
-
 	if(length!=ret){
 		gnu_debug("gnu_write_inferior,length=%d, but return %d\n",length,ret);
 		return -1;
@@ -2287,7 +2183,7 @@ error_t S_exception_raise_request (mach_port_t port, mach_port_t reply_port,
 	struct inf *inf = waiting_inf;
 	struct proc *thread = inf_port_to_thread (inf, thread_port);
 
-	inf_debug0(waiting_inf,
+	inf_debug(waiting_inf,
 			"S_exception_raise_request thread = %d, task = %d, exc = %d, code = %d, subcode = %d",
 			thread_port, task_port, exception, code, subcode);
 
@@ -2369,7 +2265,7 @@ S_proc_wait_reply (mach_port_t reply, error_t err,
 {
 	struct inf *inf = waiting_inf;
 
-	inf_debug0(inf, "S_proc_wait_reply  err = %s, pid = %d, status = 0x%x, sigcode = %d",
+	inf_debug(inf, "S_proc_wait_reply  err = %s, pid = %d, status = 0x%x, sigcode = %d",
 			err ? safe_strerror (err) : "0", pid, status, sigcode);
 
 	if (err && proc_wait_pid && (!inf->task || !inf->task->port))
