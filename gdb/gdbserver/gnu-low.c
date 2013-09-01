@@ -63,21 +63,21 @@ ptid_t inferior_ptid;
    to INF's msg port and task port respectively.  If it has no msg port,
    EIEIO is returned.  INF must refer to a running process!  */
 #define INF_MSGPORT_RPC(inf, rpc_expr) \
-  HURD_MSGPORT_RPC (proc_getmsgport (proc_server, inf->pid, &msgport), \
-		    (refport = inf->task->port, 0), 0, \
-		    msgport ? (rpc_expr) : EIEIO)
+	HURD_MSGPORT_RPC (proc_getmsgport (proc_server, inf->pid, &msgport), \
+			(refport = inf->task->port, 0), 0, \
+			msgport ? (rpc_expr) : EIEIO)
 
 /* Like INF_MSGPORT_RPC, but will also resume the signal thread to ensure
    there's someone around to deal with the RPC (and resuspend things
    afterwards).  This effects INF's threads' resume_sc count.  */
 #define INF_RESUME_MSGPORT_RPC(inf, rpc_expr) \
-  (inf_set_threads_resume_sc_for_signal_thread (inf) \
-   ? ({ error_t __e; \
-	inf_resume (inf); \
-	__e = INF_MSGPORT_RPC (inf, rpc_expr); \
-	inf_suspend (inf); \
-	__e; }) \
-   : EIEIO)
+	(inf_set_threads_resume_sc_for_signal_thread (inf) \
+	 ? ({ error_t __e; \
+		 inf_resume (inf); \
+		 __e = INF_MSGPORT_RPC (inf, rpc_expr); \
+		 inf_suspend (inf); \
+		 __e; }) \
+	 : EIEIO)
 static struct target_ops gnu_target_ops;
 
 struct process_info_private
@@ -89,15 +89,15 @@ int debug_flags=0;
 
 void gnu_debug (char *string, ...)
 {
-  va_list args;
+	va_list args;
 
-  if (!debug_flags)
-    return;
-  va_start (args, string);
-  fprintf (stderr, "DEBUG(gnu): ");
-  vfprintf (stderr, string, args);
-  fprintf (stderr, "\n");
-  va_end (args);
+	if (!debug_flags)
+		return;
+	va_start (args, string);
+	fprintf (stderr, "DEBUG(gnu): ");
+	vfprintf (stderr, string, args);
+	fprintf (stderr, "\n");
+	va_end (args);
 }
 
 /* Set up the thread resume_sc's so that only the signal thread is running
@@ -105,54 +105,54 @@ void gnu_debug (char *string, ...)
    did so, or false if we can't find a signal thread.  */
 int inf_set_threads_resume_sc_for_signal_thread (struct inf *inf)
 {
-  if (inf->signal_thread)
-    {
-      inf_set_threads_resume_sc (inf, inf->signal_thread, 0);
-      return 1;
-    }
-  else
-    return 0;
+	if (inf->signal_thread)
+	{
+		inf_set_threads_resume_sc (inf, inf->signal_thread, 0);
+		return 1;
+	}
+	else
+		return 0;
 }
 
 /* Sets the resume_sc of each thread in inf.  That of RUN_THREAD is set to 0,
    and others are set to their run_sc if RUN_OTHERS is true, and otherwise
    their pause_sc.  */
-void
+	void
 inf_set_threads_resume_sc (struct inf *inf,
-			   struct proc *run_thread, int run_others)
+		struct proc *run_thread, int run_others)
 {
-  struct proc *thread;
+	struct proc *thread;
 
-  inf_update_procs (inf);
-  for (thread = inf->threads; thread; thread = thread->next)
-    if (thread == run_thread)
-      thread->resume_sc = 0;
-    else if (run_others)
-      thread->resume_sc = thread->run_sc;
-    else
-      thread->resume_sc = thread->pause_sc;
+	inf_update_procs (inf);
+	for (thread = inf->threads; thread; thread = thread->next)
+		if (thread == run_thread)
+			thread->resume_sc = 0;
+		else if (run_others)
+			thread->resume_sc = thread->run_sc;
+		else
+			thread->resume_sc = thread->pause_sc;
 }
 void inf_clear_wait (struct inf *inf)
 {
-  inf_debug (inf, "clearing wait");
-  inf->wait.status.kind = TARGET_WAITKIND_SPURIOUS;
-  inf->wait.thread = 0;
-  inf->wait.suppress = 0;
-  if (inf->wait.exc.handler != MACH_PORT_NULL)
-    {
-      mach_port_deallocate (mach_task_self (), inf->wait.exc.handler);
-      inf->wait.exc.handler = MACH_PORT_NULL;
-    }
-  if (inf->wait.exc.reply != MACH_PORT_NULL)
-    {
-      mach_port_deallocate (mach_task_self (), inf->wait.exc.reply);
-      inf->wait.exc.reply = MACH_PORT_NULL;
-    }
+	inf_debug (inf, "clearing wait");
+	inf->wait.status.kind = TARGET_WAITKIND_SPURIOUS;
+	inf->wait.thread = 0;
+	inf->wait.suppress = 0;
+	if (inf->wait.exc.handler != MACH_PORT_NULL)
+	{
+		mach_port_deallocate (mach_task_self (), inf->wait.exc.handler);
+		inf->wait.exc.handler = MACH_PORT_NULL;
+	}
+	if (inf->wait.exc.reply != MACH_PORT_NULL)
+	{
+		mach_port_deallocate (mach_task_self (), inf->wait.exc.reply);
+		inf->wait.exc.reply = MACH_PORT_NULL;
+	}
 }
 
 int __proc_pid (struct proc *proc)
 {
-  return proc->inf->pid;
+	return proc->inf->pid;
 }
 
 static ptid_t gnu_ptid_build(int pid,long lwp,long tid)
@@ -166,118 +166,118 @@ static long gnu_get_tid(ptid_t ptid)
 
 int proc_update_sc (struct proc *proc)
 {
-  int running;
-  int err = 0;
-  int delta = proc->sc - proc->cur_sc;
+	int running;
+	int err = 0;
+	int delta = proc->sc - proc->cur_sc;
 
-  if (delta)
-    gnu_debug ("sc: %d --> %d", proc->cur_sc, proc->sc);
+	if (delta)
+		gnu_debug ("sc: %d --> %d", proc->cur_sc, proc->sc);
 
-  if (proc->sc == 0 && proc->state_changed)
-    /* Since PROC may start running, we must write back any state changes.  */
-    {
-      gdb_assert (proc_is_thread (proc));
-      err = thread_set_state (proc->port, THREAD_STATE_FLAVOR,
-			 (thread_state_t) &proc->state, THREAD_STATE_SIZE);
-      if (!err)
-	proc->state_changed = 0;
-    }
-
-  if (delta > 0)
-    {
-      while (delta-- > 0 && !err)
+	if (proc->sc == 0 && proc->state_changed)
+		/* Since PROC may start running, we must write back any state changes.  */
 	{
-	  if (proc_is_task (proc))
-	    err = task_suspend (proc->port);
-	  else
-	    err = thread_suspend (proc->port);
+		gdb_assert (proc_is_thread (proc));
+		err = thread_set_state (proc->port, THREAD_STATE_FLAVOR,
+				(thread_state_t) &proc->state, THREAD_STATE_SIZE);
+		if (!err)
+			proc->state_changed = 0;
 	}
-    }
-  else
-    {
-      while (delta++ < 0 && !err)
+
+	if (delta > 0)
 	{
-	  if (proc_is_task (proc))
-	    err = task_resume (proc->port);
-	  else
-	    err = thread_resume (proc->port);
+		while (delta-- > 0 && !err)
+		{
+			if (proc_is_task (proc))
+				err = task_suspend (proc->port);
+			else
+				err = thread_suspend (proc->port);
+		}
 	}
-    }
-  if (!err)
-    proc->cur_sc = proc->sc;
+	else
+	{
+		while (delta++ < 0 && !err)
+		{
+			if (proc_is_task (proc))
+				err = task_resume (proc->port);
+			else
+				err = thread_resume (proc->port);
+		}
+	}
+	if (!err)
+		proc->cur_sc = proc->sc;
 
-  /* If we got an error, then the task/thread has disappeared.  */
-  running = !err && proc->sc == 0;
+	/* If we got an error, then the task/thread has disappeared.  */
+	running = !err && proc->sc == 0;
 
-  proc_debug (proc, "is %s", err ? "dead" : running ? "running" : "suspended");
-  if (err)
-    proc_debug (proc, "err = %s", safe_strerror (err));
+	proc_debug (proc, "is %s", err ? "dead" : running ? "running" : "suspended");
+	if (err)
+		proc_debug (proc, "err = %s", safe_strerror (err));
 
-  if (running)
-    {
-      proc->aborted = 0;
-      proc->state_valid = proc->state_changed = 0;
-      proc->fetched_regs = 0;
-    }
+	if (running)
+	{
+		proc->aborted = 0;
+		proc->state_valid = proc->state_changed = 0;
+		proc->fetched_regs = 0;
+	}
 
-  return running;
+	return running;
 }
 
 error_t proc_get_exception_port (struct proc * proc, mach_port_t * port)
 {
-  if (proc_is_task (proc))
-    return task_get_exception_port (proc->port, port);
-  else
-    return thread_get_exception_port (proc->port, port);
+	if (proc_is_task (proc))
+		return task_get_exception_port (proc->port, port);
+	else
+		return thread_get_exception_port (proc->port, port);
 }
 static mach_port_t _proc_get_exc_port (struct proc *proc)
 {
-  mach_port_t exc_port;
-  error_t err = proc_get_exception_port (proc, &exc_port);
+	mach_port_t exc_port;
+	error_t err = proc_get_exception_port (proc, &exc_port);
 
-  if (err)
-    /* PROC must be dead.  */
-    {
-      if (proc->exc_port)
-	mach_port_deallocate (mach_task_self (), proc->exc_port);
-      proc->exc_port = MACH_PORT_NULL;
-      if (proc->saved_exc_port)
-	mach_port_deallocate (mach_task_self (), proc->saved_exc_port);
-      proc->saved_exc_port = MACH_PORT_NULL;
-    }
+	if (err)
+		/* PROC must be dead.  */
+	{
+		if (proc->exc_port)
+			mach_port_deallocate (mach_task_self (), proc->exc_port);
+		proc->exc_port = MACH_PORT_NULL;
+		if (proc->saved_exc_port)
+			mach_port_deallocate (mach_task_self (), proc->saved_exc_port);
+		proc->saved_exc_port = MACH_PORT_NULL;
+	}
 
-  return exc_port;
+	return exc_port;
 }
 #if 1
 void inf_set_traced (struct inf *inf, int on)
 {
-  if (on == inf->traced)
-    return;
-  
-  if (inf->task && !inf->task->dead)
-    /* Make it take effect immediately.  */
-    {
-      sigset_t mask = on ? ~(sigset_t) 0 : 0;
-      error_t err =
-	INF_RESUME_MSGPORT_RPC (inf, msg_set_init_int (msgport, refport,
-						       INIT_TRACEMASK, mask));
+	if (on == inf->traced)
+		return;
 
-      if (err == EIEIO)
+	if (inf->task && !inf->task->dead)
+		/* Make it take effect immediately.  */
 	{
-	  /*if (on)*/
-	    /*warning (_("Can't modify tracing state for pid %d: %s"),*/
-		     /*inf->pid, "No signal thread");*/
-	  inf->traced = on;
+		sigset_t mask = on ? ~(sigset_t) 0 : 0;
+		error_t err =
+			INF_RESUME_MSGPORT_RPC (inf, msg_set_init_int (msgport, refport,
+						INIT_TRACEMASK, mask));
+
+		if (err == EIEIO)
+		{
+			/*if (on)*/
+			/*warning (_("Can't modify tracing state for pid %d: %s"),*/
+			/*inf->pid, "No signal thread");*/
+			inf->traced = on;
+		}
+		else if (err)
+			;
+		/*warning (_("Can't modify tracing state for pid %d: %s"),*/
+		/*inf->pid, safe_strerror (err));*/
+		else
+			inf->traced = on;
 	}
-      else if (err)
-	      ;
-	/*warning (_("Can't modify tracing state for pid %d: %s"),*/
-		 /*inf->pid, safe_strerror (err));*/
-      else
-	inf->traced = on;
-    }
-  else
-    inf->traced = on;
+	else
+		inf->traced = on;
 }
 #endif
 
@@ -285,449 +285,449 @@ void inf_set_traced (struct inf *inf, int on)
    match the desired values.  Careful to always do thread/task suspend
    counts in the safe order.  Returns true if at least one thread is
    thought to be running.  */
-int
+	int
 inf_update_suspends (struct inf *inf)
 {
-  struct proc *task = inf->task;
+	struct proc *task = inf->task;
 
-  /* We don't have to update INF->threads even though we're iterating over it
-     because we'll change a thread only if it already has an existing proc
-     entry.  */
-  inf_debug (inf, "updating suspend counts");
+	/* We don't have to update INF->threads even though we're iterating over it
+	   because we'll change a thread only if it already has an existing proc
+	   entry.  */
+	inf_debug (inf, "updating suspend counts");
 
-  if (task)
-    {
-      struct proc *thread;
-      int task_running = (task->sc == 0), thread_running = 0;
+	if (task)
+	{
+		struct proc *thread;
+		int task_running = (task->sc == 0), thread_running = 0;
 
-      if (task->sc > task->cur_sc)
-	/* The task is becoming _more_ suspended; do before any threads.  */
-	task_running = proc_update_sc (task);
+		if (task->sc > task->cur_sc)
+			/* The task is becoming _more_ suspended; do before any threads.  */
+			task_running = proc_update_sc (task);
 
-      if (inf->pending_execs)
-	/* When we're waiting for an exec, things may be happening behind our
-	   back, so be conservative.  */
-	thread_running = 1;
+		if (inf->pending_execs)
+			/* When we're waiting for an exec, things may be happening behind our
+			   back, so be conservative.  */
+			thread_running = 1;
 
-      /* Do all the thread suspend counts.  */
-      for (thread = inf->threads; thread; thread = thread->next)
-	thread_running |= proc_update_sc (thread);
+		/* Do all the thread suspend counts.  */
+		for (thread = inf->threads; thread; thread = thread->next)
+			thread_running |= proc_update_sc (thread);
 
-      if (task->sc != task->cur_sc)
-	/* We didn't do the task first, because we wanted to wait for the
-	   threads; do it now.  */
-	task_running = proc_update_sc (task);
+		if (task->sc != task->cur_sc)
+			/* We didn't do the task first, because we wanted to wait for the
+			   threads; do it now.  */
+			task_running = proc_update_sc (task);
 
-      inf_debug (inf, "%srunning...",
-		 (thread_running && task_running) ? "" : "not ");
+		inf_debug (inf, "%srunning...",
+				(thread_running && task_running) ? "" : "not ");
 
-      inf->running = thread_running && task_running;
+		inf->running = thread_running && task_running;
 
-      /* Once any thread has executed some code, we can't depend on the
-         threads list any more.  */
-      if (inf->running)
-	inf->threads_up_to_date = 0;
+		/* Once any thread has executed some code, we can't depend on the
+		   threads list any more.  */
+		if (inf->running)
+			inf->threads_up_to_date = 0;
 
-      return inf->running;
-    }
+		return inf->running;
+	}
 
-  return 0;
+	return 0;
 }
 void proc_abort (struct proc *proc, int force)
 {
-  gdb_assert (proc_is_thread (proc));
+	gdb_assert (proc_is_thread (proc));
 
-  if (!proc->aborted)
-    {
-      struct inf *inf = proc->inf;
-      int running = (proc->cur_sc == 0 && inf->task->cur_sc == 0);
-
-      if (running && force)
+	if (!proc->aborted)
 	{
-	  proc->sc = 1;
-	  inf_update_suspends (proc->inf);
-	  running = 0;
-	  /*warning (_("Stopped %s."), proc_string (proc));*/
-	}
-      else if (proc == inf->wait.thread && inf->wait.exc.reply && !force)
-	/* An exception is pending on PROC, which don't mess with.  */
-	running = 1;
+		struct inf *inf = proc->inf;
+		int running = (proc->cur_sc == 0 && inf->task->cur_sc == 0);
 
-      if (!running)
-	/* We only abort the thread if it's not actually running.  */
-	{
-	  thread_abort (proc->port);
-	  proc_debug (proc, "aborted");
-	  proc->aborted = 1;
+		if (running && force)
+		{
+			proc->sc = 1;
+			inf_update_suspends (proc->inf);
+			running = 0;
+			/*warning (_("Stopped %s."), proc_string (proc));*/
+		}
+		else if (proc == inf->wait.thread && inf->wait.exc.reply && !force)
+			/* An exception is pending on PROC, which don't mess with.  */
+			running = 1;
+
+		if (!running)
+			/* We only abort the thread if it's not actually running.  */
+		{
+			thread_abort (proc->port);
+			proc_debug (proc, "aborted");
+			proc->aborted = 1;
+		}
+		else
+			proc_debug (proc, "not aborting");
 	}
-      else
-	proc_debug (proc, "not aborting");
-    }
 }
 
 thread_state_t proc_get_state (struct proc *proc, int will_modify)
 {
-  int was_aborted = proc->aborted;
+	int was_aborted = proc->aborted;
 
-  proc_debug (proc, "updating state info%s",
-	      will_modify ? " (with intention to modify)" : "");
+	proc_debug (proc, "updating state info%s",
+			will_modify ? " (with intention to modify)" : "");
 
-  proc_abort (proc, will_modify);
+	proc_abort (proc, will_modify);
 
-  if (!was_aborted && proc->aborted)
-    /* PROC's state may have changed since we last fetched it.  */
-    proc->state_valid = 0;
+	if (!was_aborted && proc->aborted)
+		/* PROC's state may have changed since we last fetched it.  */
+		proc->state_valid = 0;
 
-  if (!proc->state_valid)
-    {
-      mach_msg_type_number_t state_size = THREAD_STATE_SIZE;
-      error_t err =
-	thread_get_state (proc->port, THREAD_STATE_FLAVOR,
-			  (thread_state_t) &proc->state, &state_size);
+	if (!proc->state_valid)
+	{
+		mach_msg_type_number_t state_size = THREAD_STATE_SIZE;
+		error_t err =
+			thread_get_state (proc->port, THREAD_STATE_FLAVOR,
+					(thread_state_t) &proc->state, &state_size);
 
-      proc_debug (proc, "getting thread state");
-      proc->state_valid = !err;
-    }
+		proc_debug (proc, "getting thread state");
+		proc->state_valid = !err;
+	}
 
-  if (proc->state_valid)
-    {
-      if (will_modify)
-	proc->state_changed = 1;
-      return (thread_state_t) &proc->state;
-    }
-  else
-    return 0;
+	if (proc->state_valid)
+	{
+		if (will_modify)
+			proc->state_changed = 1;
+		return (thread_state_t) &proc->state;
+	}
+	else
+		return 0;
 }
 
 void proc_steal_exc_port (struct proc *proc, mach_port_t exc_port)
 {
-  mach_port_t cur_exc_port = _proc_get_exc_port (proc);
+	mach_port_t cur_exc_port = _proc_get_exc_port (proc);
 
-  if (cur_exc_port)
-    {
-      error_t err = 0;
-
-      proc_debug (proc, "inserting exception port: %d", exc_port);
-
-      if (cur_exc_port != exc_port)
-	/* Put in our exception port.  */
-	err = proc_set_exception_port (proc, exc_port);
-
-      if (err || cur_exc_port == proc->exc_port)
-	/* We previously set the exception port, and it's still set.  So we
-	   just keep the old saved port which is what the proc set.  */
+	if (cur_exc_port)
 	{
-	  if (cur_exc_port)
-	    mach_port_deallocate (mach_task_self (), cur_exc_port);
-	}
-      else
-	/* Keep a copy of PROC's old exception port so it can be restored.  */
-	{
-	  if (proc->saved_exc_port)
-	    mach_port_deallocate (mach_task_self (), proc->saved_exc_port);
-	  proc->saved_exc_port = cur_exc_port;
-	}
+		error_t err = 0;
 
-      proc_debug (proc, "saved exception port: %d", proc->saved_exc_port);
+		proc_debug (proc, "inserting exception port: %d", exc_port);
 
-      if (!err)
-	proc->exc_port = exc_port;
-      /*else*/
-	/*warning (_("Error setting exception port for %s: %s"),*/
-		 /*proc_string (proc), safe_strerror (err));*/
-    }
+		if (cur_exc_port != exc_port)
+			/* Put in our exception port.  */
+			err = proc_set_exception_port (proc, exc_port);
+
+		if (err || cur_exc_port == proc->exc_port)
+			/* We previously set the exception port, and it's still set.  So we
+			   just keep the old saved port which is what the proc set.  */
+		{
+			if (cur_exc_port)
+				mach_port_deallocate (mach_task_self (), cur_exc_port);
+		}
+		else
+			/* Keep a copy of PROC's old exception port so it can be restored.  */
+		{
+			if (proc->saved_exc_port)
+				mach_port_deallocate (mach_task_self (), proc->saved_exc_port);
+			proc->saved_exc_port = cur_exc_port;
+		}
+
+		proc_debug (proc, "saved exception port: %d", proc->saved_exc_port);
+
+		if (!err)
+			proc->exc_port = exc_port;
+		/*else*/
+		/*warning (_("Error setting exception port for %s: %s"),*/
+		/*proc_string (proc), safe_strerror (err));*/
+	}
 }
 int proc_trace (struct proc *proc, int set)
 {
-  thread_state_t state = proc_get_state (proc, 1);
+	thread_state_t state = proc_get_state (proc, 1);
 
-  if (!state)
-    return 0;			/* The thread must be dead.  */
+	if (!state)
+		return 0;			/* The thread must be dead.  */
 
-  proc_debug (proc, "tracing %s", set ? "on" : "off");
+	proc_debug (proc, "tracing %s", set ? "on" : "off");
 
-  if (set)
-    {
-      /* XXX We don't get the exception unless the thread has its own
-         exception port????  */
-      if (proc->exc_port == MACH_PORT_NULL)
-	proc_steal_exc_port (proc, proc->inf->event_port);
-      THREAD_STATE_SET_TRACED (state);
-    }
-  else
-    THREAD_STATE_CLEAR_TRACED (state);
+	if (set)
+	{
+		/* XXX We don't get the exception unless the thread has its own
+		   exception port????  */
+		if (proc->exc_port == MACH_PORT_NULL)
+			proc_steal_exc_port (proc, proc->inf->event_port);
+		THREAD_STATE_SET_TRACED (state);
+	}
+	else
+		THREAD_STATE_CLEAR_TRACED (state);
 
-  return 1;
+	return 1;
 }
 error_t proc_set_exception_port (struct proc * proc, mach_port_t port)
 {
-  proc_debug (proc, "setting exception port: %d", port);
-  if (proc_is_task (proc))
-    return task_set_exception_port (proc->port, port);
-  else
-    return thread_set_exception_port (proc->port, port);
+	proc_debug (proc, "setting exception port: %d", port);
+	if (proc_is_task (proc))
+		return task_set_exception_port (proc->port, port);
+	else
+		return thread_set_exception_port (proc->port, port);
 }
 void proc_restore_exc_port (struct proc *proc)
 {
-  mach_port_t cur_exc_port = _proc_get_exc_port (proc);
+	mach_port_t cur_exc_port = _proc_get_exc_port (proc);
 
-  if (cur_exc_port)
-    {
-      error_t err = 0;
+	if (cur_exc_port)
+	{
+		error_t err = 0;
 
-      proc_debug (proc, "restoring real exception port");
+		proc_debug (proc, "restoring real exception port");
 
-      if (proc->exc_port == cur_exc_port)
-	/* Our's is still there.  */
-	err = proc_set_exception_port (proc, proc->saved_exc_port);
+		if (proc->exc_port == cur_exc_port)
+			/* Our's is still there.  */
+			err = proc_set_exception_port (proc, proc->saved_exc_port);
 
-      if (proc->saved_exc_port)
-	mach_port_deallocate (mach_task_self (), proc->saved_exc_port);
-      proc->saved_exc_port = MACH_PORT_NULL;
+		if (proc->saved_exc_port)
+			mach_port_deallocate (mach_task_self (), proc->saved_exc_port);
+		proc->saved_exc_port = MACH_PORT_NULL;
 
-      if (!err)
-	proc->exc_port = MACH_PORT_NULL;
-      else
-	gnu_debug("Error setting exception port\n");
-    }
+		if (!err)
+			proc->exc_port = MACH_PORT_NULL;
+		else
+			gnu_debug("Error setting exception port\n");
+	}
 }
 void inf_set_step_thread (struct inf *inf, struct proc *thread)
 {
-  gdb_assert (!thread || proc_is_thread (thread));
+	gdb_assert (!thread || proc_is_thread (thread));
 
-  /*if (thread)*/
-    /*inf_debug (inf, "setting step thread: %d/%d", inf->pid, thread->tid);*/
-  /*else*/
-    /*inf_debug (inf, "clearing step thread");*/
+	/*if (thread)*/
+	/*inf_debug (inf, "setting step thread: %d/%d", inf->pid, thread->tid);*/
+	/*else*/
+	/*inf_debug (inf, "clearing step thread");*/
 
-  if (inf->step_thread != thread)
-    {
-      if (inf->step_thread && inf->step_thread->port != MACH_PORT_NULL)
-	if (!proc_trace (inf->step_thread, 0))
-	  return;
-      if (thread && proc_trace (thread, 1))
-	inf->step_thread = thread;
-      else
-	inf->step_thread = 0;
-    }
+	if (inf->step_thread != thread)
+	{
+		if (inf->step_thread && inf->step_thread->port != MACH_PORT_NULL)
+			if (!proc_trace (inf->step_thread, 0))
+				return;
+		if (thread && proc_trace (thread, 1))
+			inf->step_thread = thread;
+		else
+			inf->step_thread = 0;
+	}
 }
 struct proc * _proc_free (struct proc *proc)
 {
-  struct inf *inf = proc->inf;
-  struct proc *next = proc->next;
+	struct inf *inf = proc->inf;
+	struct proc *next = proc->next;
 
-  if (proc == inf->step_thread)
-    /* Turn off single stepping.  */
-    inf_set_step_thread (inf, 0);
-  if (proc == inf->wait.thread)
-    inf_clear_wait (inf);
-  if (proc == inf->signal_thread)
-    inf->signal_thread = 0;
+	if (proc == inf->step_thread)
+		/* Turn off single stepping.  */
+		inf_set_step_thread (inf, 0);
+	if (proc == inf->wait.thread)
+		inf_clear_wait (inf);
+	if (proc == inf->signal_thread)
+		inf->signal_thread = 0;
 
-  if (proc->port != MACH_PORT_NULL)
-    {
-      if (proc->exc_port != MACH_PORT_NULL)
-	/* Restore the original exception port.  */
-	proc_restore_exc_port (proc);
-      if (proc->cur_sc != 0)
-	/* Resume the thread/task.  */
+	if (proc->port != MACH_PORT_NULL)
 	{
-	  proc->sc = 0;
-	  proc_update_sc (proc);
+		if (proc->exc_port != MACH_PORT_NULL)
+			/* Restore the original exception port.  */
+			proc_restore_exc_port (proc);
+		if (proc->cur_sc != 0)
+			/* Resume the thread/task.  */
+		{
+			proc->sc = 0;
+			proc_update_sc (proc);
+		}
+		mach_port_deallocate (mach_task_self (), proc->port);
 	}
-      mach_port_deallocate (mach_task_self (), proc->port);
-    }
 
-  xfree (proc);
-  return next;
+	xfree (proc);
+	return next;
 }
 
 struct proc * make_proc (struct inf *inf, mach_port_t port, int tid)
 {
-  error_t err;
-  mach_port_t prev_port = MACH_PORT_NULL;
-  struct proc *proc = xmalloc (sizeof (struct proc));
+	error_t err;
+	mach_port_t prev_port = MACH_PORT_NULL;
+	struct proc *proc = xmalloc (sizeof (struct proc));
 
-  proc->port = port;
-  proc->tid = tid;
-  proc->inf = inf;
-  proc->next = 0;
-  proc->saved_exc_port = MACH_PORT_NULL;
-  proc->exc_port = MACH_PORT_NULL;
+	proc->port = port;
+	proc->tid = tid;
+	proc->inf = inf;
+	proc->next = 0;
+	proc->saved_exc_port = MACH_PORT_NULL;
+	proc->exc_port = MACH_PORT_NULL;
 
-  proc->sc = 0;
-  proc->cur_sc = 0;
+	proc->sc = 0;
+	proc->cur_sc = 0;
 
-  /* Note that these are all the values for threads; the task simply uses the
-     corresponding field in INF directly.  */
-  proc->run_sc = inf->default_thread_run_sc;
-  proc->pause_sc = inf->default_thread_pause_sc;
-  proc->detach_sc = inf->default_thread_detach_sc;
-  proc->resume_sc = proc->run_sc;
+	/* Note that these are all the values for threads; the task simply uses the
+	   corresponding field in INF directly.  */
+	proc->run_sc = inf->default_thread_run_sc;
+	proc->pause_sc = inf->default_thread_pause_sc;
+	proc->detach_sc = inf->default_thread_detach_sc;
+	proc->resume_sc = proc->run_sc;
 
-  proc->aborted = 0;
-  proc->dead = 0;
-  proc->state_valid = 0;
-  proc->state_changed = 0;
+	proc->aborted = 0;
+	proc->dead = 0;
+	proc->state_valid = 0;
+	proc->state_changed = 0;
 
-  proc_debug (proc, "is new");
+	proc_debug (proc, "is new");
 
-  /* Get notified when things die.  */
-  err =
-    mach_port_request_notification (mach_task_self (), port,
-				    MACH_NOTIFY_DEAD_NAME, 1,
-				    inf->event_port,
-				    MACH_MSG_TYPE_MAKE_SEND_ONCE,
-				    &prev_port);
-  if (err)
-    warning (_("Couldn't request notification for port %d: %s"),
-	     port, safe_strerror (err));
-  else
-    {
-      proc_debug (proc, "notifications to: %d", inf->event_port);
-      if (prev_port != MACH_PORT_NULL)
-	mach_port_deallocate (mach_task_self (), prev_port);
-    }
+	/* Get notified when things die.  */
+	err =
+		mach_port_request_notification (mach_task_self (), port,
+				MACH_NOTIFY_DEAD_NAME, 1,
+				inf->event_port,
+				MACH_MSG_TYPE_MAKE_SEND_ONCE,
+				&prev_port);
+	if (err)
+		warning (_("Couldn't request notification for port %d: %s"),
+				port, safe_strerror (err));
+	else
+	{
+		proc_debug (proc, "notifications to: %d", inf->event_port);
+		if (prev_port != MACH_PORT_NULL)
+			mach_port_deallocate (mach_task_self (), prev_port);
+	}
 
-  if (inf->want_exceptions)
-    {
-      if (proc_is_task (proc))
-	/* Make the task exception port point to us.  */
-	proc_steal_exc_port (proc, inf->event_port);
-      else
-	/* Just clear thread exception ports -- they default to the
-           task one.  */
-	proc_steal_exc_port (proc, MACH_PORT_NULL);
-    }
+	if (inf->want_exceptions)
+	{
+		if (proc_is_task (proc))
+			/* Make the task exception port point to us.  */
+			proc_steal_exc_port (proc, inf->event_port);
+		else
+			/* Just clear thread exception ports -- they default to the
+			   task one.  */
+			proc_steal_exc_port (proc, MACH_PORT_NULL);
+	}
 
-  return proc;
+	return proc;
 }
 
 void inf_validate_procs (struct inf *inf)
 {
-  thread_array_t threads;
-  mach_msg_type_number_t num_threads, i;
-  struct proc *task = inf->task;
+	thread_array_t threads;
+	mach_msg_type_number_t num_threads, i;
+	struct proc *task = inf->task;
 
-  /* If no threads are currently running, this function will guarantee that
-     things are up to date.  The exception is if there are zero threads --
-     then it is almost certainly in an odd state, and probably some outside
-     agent will create threads.  */
-  inf->threads_up_to_date = inf->threads ? !inf->running : 0;
+	/* If no threads are currently running, this function will guarantee that
+	   things are up to date.  The exception is if there are zero threads --
+	   then it is almost certainly in an odd state, and probably some outside
+	   agent will create threads.  */
+	inf->threads_up_to_date = inf->threads ? !inf->running : 0;
 
-  if (task)
-    {
-      error_t err = task_threads (task->port, &threads, &num_threads);
-
-      inf_debug (inf, "fetching threads");
-      if (err)
-	/* TASK must be dead.  */
+	if (task)
 	{
-	  task->dead = 1;
-	  task = 0;
+		error_t err = task_threads (task->port, &threads, &num_threads);
+
+		inf_debug (inf, "fetching threads");
+		if (err)
+			/* TASK must be dead.  */
+		{
+			task->dead = 1;
+			task = 0;
+		}
 	}
-    }
 
-  if (!task)
-    {
-      num_threads = 0;
-      inf_debug (inf, "no task");
-    }
+	if (!task)
+	{
+		num_threads = 0;
+		inf_debug (inf, "no task");
+	}
 
-  {
-    /* Make things normally linear.  */
-    mach_msg_type_number_t search_start = 0;
-    /* Which thread in PROCS corresponds to each task thread, & the task.  */
-    struct proc *matched[num_threads + 1];
-    /* The last thread in INF->threads, so we can add to the end.  */
-    struct proc *last = 0;
-    /* The current thread we're considering.  */
-    struct proc *thread = inf->threads;
+	{
+		/* Make things normally linear.  */
+		mach_msg_type_number_t search_start = 0;
+		/* Which thread in PROCS corresponds to each task thread, & the task.  */
+		struct proc *matched[num_threads + 1];
+		/* The last thread in INF->threads, so we can add to the end.  */
+		struct proc *last = 0;
+		/* The current thread we're considering.  */
+		struct proc *thread = inf->threads;
 
-    memset (matched, 0, sizeof (matched));
+		memset (matched, 0, sizeof (matched));
 
-    while (thread)
-      {
-	mach_msg_type_number_t left;
+		while (thread)
+		{
+			mach_msg_type_number_t left;
 
-	for (i = search_start, left = num_threads; left; i++, left--)
-	  {
-	    if (i >= num_threads)
-	      i -= num_threads;	/* I wrapped around.  */
-	    if (thread->port == threads[i])
-	      /* We already know about this thread.  */
-	      {
-		matched[i] = thread;
-		last = thread;
-		thread = thread->next;
-		search_start++;
-		break;
-	      }
-	  }
+			for (i = search_start, left = num_threads; left; i++, left--)
+			{
+				if (i >= num_threads)
+					i -= num_threads;	/* I wrapped around.  */
+				if (thread->port == threads[i])
+					/* We already know about this thread.  */
+				{
+					matched[i] = thread;
+					last = thread;
+					thread = thread->next;
+					search_start++;
+					break;
+				}
+			}
 
-	if (!left)
-	  {
-	    proc_debug (thread, "died!");
+			if (!left)
+			{
+				proc_debug (thread, "died!");
 
-	    ptid_t ptid;
-	    ptid = gnu_ptid_build (inf->pid, 0, thread->tid);
-	    if(find_thread_ptid(ptid))
-		    remove_thread(find_thread_ptid(ptid));
+				ptid_t ptid;
+				ptid = gnu_ptid_build (inf->pid, 0, thread->tid);
+				if(find_thread_ptid(ptid))
+					remove_thread(find_thread_ptid(ptid));
 
-	    thread->port = MACH_PORT_NULL;
-	    thread = _proc_free (thread);	/* THREAD is dead.  */
-	    if (last)
-	      last->next = thread;
-	    else
-	      inf->threads = thread;
-	  }
-      }
+				thread->port = MACH_PORT_NULL;
+				thread = _proc_free (thread);	/* THREAD is dead.  */
+				if (last)
+					last->next = thread;
+				else
+					inf->threads = thread;
+			}
+		}
 
-    for (i = 0; i < num_threads; i++)
-      {
-	if (matched[i])
-	  /* Throw away the duplicate send right.  */
-	  mach_port_deallocate (mach_task_self (), threads[i]);
-	else
-	  /* THREADS[I] is a thread we don't know about yet!  */
-	  {
-	    ptid_t ptid;
+		for (i = 0; i < num_threads; i++)
+		{
+			if (matched[i])
+				/* Throw away the duplicate send right.  */
+				mach_port_deallocate (mach_task_self (), threads[i]);
+			else
+				/* THREADS[I] is a thread we don't know about yet!  */
+			{
+				ptid_t ptid;
 
-	    thread = make_proc (inf, threads[i], next_thread_id++);
-	    if (last)
-	      last->next = thread;
-	    else
-	      inf->threads = thread;
-	    last = thread;
-	    proc_debug (thread, "new thread: %d", threads[i]);
+				thread = make_proc (inf, threads[i], next_thread_id++);
+				if (last)
+					last->next = thread;
+				else
+					inf->threads = thread;
+				last = thread;
+				proc_debug (thread, "new thread: %d", threads[i]);
 
-	    ptid = gnu_ptid_build (inf->pid, 0, thread->tid);
+				ptid = gnu_ptid_build (inf->pid, 0, thread->tid);
 
-	    /* Tell GDB's generic thread code.  */
+				/* Tell GDB's generic thread code.  */
 
 #if 0
-	    if (ptid_equal (inferior_ptid, pid_to_ptid (inf->pid)))
-	      /* This is the first time we're hearing about thread
-		 ids, after a fork-child.  */
-	      thread_change_ptid (inferior_ptid, ptid);
-	    else if (inf->pending_execs != 0)
-	      /* This is a shell thread.  */
-	      add_thread_silent (ptid);
-	    else
-	      add_thread (ptid);
+				if (ptid_equal (inferior_ptid, pid_to_ptid (inf->pid)))
+					/* This is the first time we're hearing about thread
+					   ids, after a fork-child.  */
+					thread_change_ptid (inferior_ptid, ptid);
+				else if (inf->pending_execs != 0)
+					/* This is a shell thread.  */
+					add_thread_silent (ptid);
+				else
+					add_thread (ptid);
 #endif 
-	    if (!find_thread_ptid (ptid))
-	    {
-		    gnu_debug("New thread, pid=%d, tid=%d\n",inf->pid,thread->tid);
-		    add_thread (ptid, thread);
-		    inferior_ptid = ptid; // need fix!!!!!!!!!!!!!
-	    }
-	  }
-      }
+				if (!find_thread_ptid (ptid))
+				{
+					gnu_debug("New thread, pid=%d, tid=%d\n",inf->pid,thread->tid);
+					add_thread (ptid, thread);
+					inferior_ptid = ptid; // need fix!!!!!!!!!!!!!
+				}
+			}
+		}
 
-    vm_deallocate (mach_task_self (),
-		    (vm_address_t) threads, (num_threads * sizeof (thread_t)));
-  }
+		vm_deallocate (mach_task_self (),
+				(vm_address_t) threads, (num_threads * sizeof (thread_t)));
+	}
 }
 int inf_update_procs (struct inf *inf)
 {
@@ -830,41 +830,41 @@ void inf_startup (struct inf *inf, int pid)
 /* Detachs from INF's inferior task, letting it run once again...  */
 void inf_detach (struct inf *inf)
 {
-  struct proc *task = inf->task;
+	struct proc *task = inf->task;
 
-  inf_debug (inf, "detaching...");
+	inf_debug (inf, "detaching...");
 
-  inf_clear_wait (inf);
-  inf_set_step_thread (inf, 0);
+	inf_clear_wait (inf);
+	inf_set_step_thread (inf, 0);
 
-  if (task)
-    {
-      struct proc *thread;
-
-      inf_validate_procinfo (inf);
-
-      inf_set_traced (inf, 0);
-      if (inf->stopped)
+	if (task)
 	{
-	  if (inf->nomsg)
-	    inf_continue (inf);
-	  else
-	    inf_signal (inf, GDB_SIGNAL_0);
+		struct proc *thread;
+
+		inf_validate_procinfo (inf);
+
+		inf_set_traced (inf, 0);
+		if (inf->stopped)
+		{
+			if (inf->nomsg)
+				inf_continue (inf);
+			else
+				inf_signal (inf, GDB_SIGNAL_0);
+		}
+
+		proc_restore_exc_port (task);
+		task->sc = inf->detach_sc;
+
+		for (thread = inf->threads; thread; thread = thread->next)
+		{
+			proc_restore_exc_port (thread);
+			thread->sc = thread->detach_sc;
+		}
+
+		inf_update_suspends (inf);
 	}
 
-      proc_restore_exc_port (task);
-      task->sc = inf->detach_sc;
-
-      for (thread = inf->threads; thread; thread = thread->next)
-	{
-	  proc_restore_exc_port (thread);
-	  thread->sc = thread->detach_sc;
-	}
-
-      inf_update_suspends (inf);
-    }
-
-  inf_cleanup (inf);
+	inf_cleanup (inf);
 }
 void inf_attach (struct inf *inf, int pid)
 {
@@ -2160,51 +2160,51 @@ error_t do_mach_notify_dead_name (mach_port_t notify, mach_port_t dead_port)
 
 static error_t ill_rpc (char *fun)
 {
-  warning (_("illegal rpc: %s"), fun);
-  return 0;
+	warning (_("illegal rpc: %s"), fun);
+	return 0;
 }
 
-error_t
+	error_t
 do_mach_notify_no_senders (mach_port_t notify, mach_port_mscount_t count)
 {
 	return ill_rpc ("do_mach_notify_no_senders");
 }
 
-error_t
+	error_t
 do_mach_notify_port_deleted (mach_port_t notify, mach_port_t name)
 {
 	return ill_rpc ("do_mach_notify_port_deleted");
 }
 
-error_t
+	error_t
 do_mach_notify_msg_accepted (mach_port_t notify, mach_port_t name)
 {
 	return ill_rpc ("do_mach_notify_msg_accepted");
 }
 
-error_t
+	error_t
 do_mach_notify_port_destroyed (mach_port_t notify, mach_port_t name)
 {
 	return ill_rpc ("do_mach_notify_port_destroyed");
 }
 
-error_t
+	error_t
 do_mach_notify_send_once (mach_port_t notify)
 {
 	return ill_rpc ("do_mach_notify_send_once");
 }
 
-error_t
+	error_t
 S_proc_setmsgport_reply (mach_port_t reply, error_t err,
-			 mach_port_t old_msg_port)
+		mach_port_t old_msg_port)
 {
-  return ill_rpc ("S_proc_setmsgport_reply");
+	return ill_rpc ("S_proc_setmsgport_reply");
 }
 
-error_t
+	error_t
 S_proc_getmsgport_reply (mach_port_t reply, error_t err, mach_port_t msg_port)
 {
-  return ill_rpc ("S_proc_getmsgport_reply");
+	return ill_rpc ("S_proc_getmsgport_reply");
 }
 
 static struct target_ops gnu_target_ops = {
