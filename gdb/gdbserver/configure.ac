@@ -456,6 +456,31 @@ if $want_ipa ; then
    fi
 fi
 
+frags=
+case $host_os in
+  gnu*)
+    #Needed for GNU Hurd hosts.
+    AC_PROG_AWK
+    AC_CHECK_TOOL(MIG, mig)
+    if test x"$MIG" = x; then
+      AC_MSG_ERROR([MIG not found but required for $host hosts])
+    fi
+    host_makefile_frag=${srcdir}/i386gnu.mh
+    if test ! -f ${host_makefile_frag}; then
+       AC_MSG_ERROR("*** Gdb does not support native target ${host}")
+    fi
+    frags="$frags $host_makefile_frag"
+    ;;
+  *)
+    host_makefile_frag=/dev/null
+    ;;
+esac
+
+echo "host_makefile_frag=$host_makefile_frag"
+    echo "frags=$frags"
+AC_SUBST_FILE(host_makefile_frag)
+AC_SUBST(frags)
+
 AC_SUBST(GDBSERVER_DEPFILES)
 AC_SUBST(GDBSERVER_LIBS)
 AC_SUBST(srv_xmlbuiltin)

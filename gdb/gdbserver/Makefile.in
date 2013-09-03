@@ -50,6 +50,8 @@ INSTALL_DATA = @INSTALL_DATA@
 RANLIB = @RANLIB@
 
 CC = @CC@
+MIG = @MIG@
+AWK = @AWK@
 
 # Dependency tracking information.
 DEPMODE = @CCDEPMODE@
@@ -172,7 +174,7 @@ OBS = agent.o ax.o inferiors.o regcache.o remote-utils.o server.o signals.o targ
 	xml-utils.o common-utils.o ptid.o buffer.o format.o filestuff.o \
 	dll.o notif.o tdesc.o \
 	$(XML_BUILTIN) \
-	$(DEPFILES) $(LIBOBJS)
+	$(DEPFILES) $(LIBOBJS) $(NATDEPFILES)
 GDBREPLAY_OBS = gdbreplay.o version.o
 GDBSERVER_LIBS = @GDBSERVER_LIBS@
 XM_CLIBS = @LIBS@
@@ -194,6 +196,10 @@ CLEANDIRS = $(SUBDIRS)
 # a new directory is added.
 # The format here is for the `case' shell command.
 REQUIRED_SUBDIRS = $(GNULIB_BUILDDIR)
+
+# Host-dependent makefile fragment comes in here.
+@host_makefile_frag@
+# End of host-dependent makefile fragment
 
 FLAGS_TO_PASS = \
 	"prefix=$(prefix)" \
@@ -228,7 +234,7 @@ FLAGS_TO_PASS = \
 	"RUNTESTFLAGS=$(RUNTESTFLAGS)"
 
 # All generated files which can be included by another file.
-generated_files = config.h $(GNULIB_H)
+generated_files = config.h $(GNULIB_H) $(NAT_GENERATED_FILES)
 
 .c.o:
 	$(COMPILE) $<
