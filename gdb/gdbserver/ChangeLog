@@ -1,3 +1,34 @@
+2013-09-03  Yue Lu  <hacklu.newborn@gmail.com>
+
+	* configure.ac (host_makefile_frag): New rule for GNU/Hurd to load
+	i386gnu.mh.
+	* configure.srv (srv_tgtobj): Add gnu-low.o gnu-i386-low.o for
+	GNU/Hurd.
+	(srv_regobj): Add $(srv_i386_regobj) for GNU/Hurd.
+	(srv_xmlfiles): Add $(srv_i386_xmlfiles) for GNU/Hurd.
+	* configure: Regenerate.
+	* Makefile.in (OBS): Add $(NATDEPFILES).
+	(generated_files): Add $(NAT_GENERATED_FILES).
+	(@host_makefile_frag@): New rule.
+	(MIG): New tools.
+	(AWK): New tools.
+	* exc_request.defs: New file. copy from [gdb]/gdb/exc_request.defs.
+	* gnu-i386-low.c: New file. Modified from [gdb]/gdb/i386gnu-nat.c.
+	* gnu-low.c: New file. The main part for gdbserver on GNU/Hurd. Most
+	of code are borrowed from [gdb]/gdb/gnu-nat.c.
+	* gnu-low.h: New file. Most of code are borrowed from
+	[gdb]/gdb/gnu-nat.h.
+	* hostio.c: Add macro define PATH_MAX 512.
+	* i386gnu.mh: New file. copy from [gdb]/gdb/config/i386/i386gnu.mh and delete
+	unused part.
+	* msg.defs: New file. copy from [gdb]/gdb/msg.defs.
+	* msg_reply.defs: New file. copy from [gdb]/gdb/msg_reply.defs.
+	* notify.defs: New file. copy from [gdb]/gdb/notify.defs.
+	* process_reply.defs: New file. copy from [gdb]/gdb/process_reply.defs.
+	* reply_mid_hack.awk: New file. copy from [gdb]/gdb/reply_mid_hack.awk.
+	* server.h: Add typedef long CORE_ADDR;
+	* utils.c (host_address_to_string): New functions, copy from [gdb]/gdb/utils.c.
+
 2013-06-12  Pedro Alves  <palves@redhat.com>
 
 	* linux-x86-low.c (linux_is_elf64): Delete global.
