@@ -59,6 +59,10 @@ static process_t proc_server = MACH_PORT_NULL;
 static int next_thread_id = 1;
 ptid_t inferior_ptid;
 
+static ptid_t gnu_ptid_build (int pid, long lwp, long tid);
+static long gnu_get_tid (ptid_t ptid);
+static struct process_info * gnu_add_process (int pid, int attached);
+
 /* Evaluate RPC_EXPR in a scope with the variables MSGPORT and REFPORT bound
    to INF's msg port and task port respectively.  If it has no msg port,
    EIEIO is returned.  INF must refer to a running process!  */
