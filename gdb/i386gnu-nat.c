@@ -24,38 +24,34 @@
 #include "regcache.h"
 
 #include "gdb_assert.h"
-#include <errno.h>
-#include <stdio.h>
 #include "gdb_string.h"
-
 
 #include "i386-tdep.h"
 
-#include "gnu-nat.h"
 #include "i387-tdep.h"
 
 #ifdef HAVE_SYS_PROCFS_H
 # include <sys/procfs.h>
 # include "gregset.h"
 #endif
-#else
-#include "gnu-low.h"
 
-#include <limits.h>
-#include <sys/ptrace.h>
-#include <unistd.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
+#else /* GDBSERVER */
+#include "server.h"
+#include "target.h"
 #include "gdb_wait.h"
-#include <signal.h>
 
 #define I386_NUM_GREGS	16
-#endif
+#endif /* GDBSERVER */
+
+#include <errno.h>
+#include <stdio.h>
 
 #include <mach.h>
 #include <mach_error.h>
 #include <mach/message.h>
 #include <mach/exception.h>
+#include "gnu-nat.h"
+/*#include "gnu-low.h"*/
 
 /* Offset to the thread_state_t location where REG is stored.  */
 #define REG_OFFSET(reg) offsetof (struct i386_thread_state, reg)
@@ -142,7 +138,8 @@ supply_fpregset (struct regcache *regcache, const gdb_fpregset_t *fpregs)
 #endif
 #endif
 
-extern struct inf *gnu_current_inf; extern ptid_t inferior_ptid;
+extern struct inf *gnu_current_inf; 
+extern ptid_t inferior_ptid;
 /* Fetch register REGNO, or all regs if REGNO is -1.  */
 #ifndef GDBSERVER
 static void

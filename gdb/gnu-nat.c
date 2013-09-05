@@ -21,30 +21,7 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifdef GDBSERVER
-#include "server.h"
-#include "target.h"
-
-#include <limits.h>
-#include <unistd.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include "gdb_wait.h"
-#include <signal.h>
-#include <sys/ptrace.h>
-
-#include <mach.h>
-#include <mach_error.h>
-#include <mach/exception.h>
-#include <mach/message.h>
-
-#include "gnu-low.h"
-
-#include "exc_request_S.h"
-#include "notify_S.h"
-#include "process_reply_S.h"
-#include "msg_reply_S.h"
-#else
+#ifndef GDBSERVER
 #include "defs.h"
 
 #include <ctype.h>
@@ -56,18 +33,6 @@
 #include "gdb_string.h"
 #include <sys/ptrace.h>
 
-#include <mach.h>
-#include <mach_error.h>
-#include <mach/exception.h>
-#include <mach/message.h>
-#include <mach/notify.h>
-#include <mach/vm_attributes.h>
-
-#include <hurd.h>
-#include <hurd/interrupt.h>
-#include <hurd/msg.h>
-#include <hurd/msg_request.h>
-#include <hurd/process.h>
 /* Defined in <hurd/process.h>, but we need forward declarations from
    <hurd/process_request.h> as well.  */
 #undef _process_user_
@@ -89,17 +54,43 @@
 #include "gdb_assert.h"
 #include "gdb_obstack.h"
 
-#include "gnu-nat.h"
 #include "inf-child.h"
 
+#include "exc_request_U.h"
+#include "msg_U.h"
+
+#else /* GDBSERVER */
+#include "server.h"
+#include "target.h"
+
+#include <limits.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
+#include "gdb_wait.h"
+#include <signal.h>
+#include <sys/ptrace.h>
+#endif /* GDBSERVER */
+
+#include <mach.h>
+#include <mach_error.h>
+#include <mach/exception.h>
+#include <mach/message.h>
+
+#include <mach/notify.h>
+#include <mach/vm_attributes.h>
+
+#include <hurd.h>
+#include <hurd/interrupt.h>
+#include <hurd/msg.h>
+#include <hurd/msg_request.h>
+#include <hurd/process.h>
+
+#include "gnu-nat.h"
 #include "exc_request_S.h"
 #include "notify_S.h"
 #include "process_reply_S.h"
 #include "msg_reply_S.h"
-#include "exc_request_U.h"
-#include "msg_U.h"
-#endif
-
 
 static process_t proc_server = MACH_PORT_NULL;
 #ifdef GDBSERVER

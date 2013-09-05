@@ -93,13 +93,83 @@ extern char *proc_string (struct proc *proc);
 
 extern int gnu_debug_flag;
 
+#ifndef GDBSERVER
 #define debug(msg, args...) \
  do { if (gnu_debug_flag) \
         fprintf_unfiltered (gdb_stdlog, "%s:%d: " msg "\r\n", \
 			    __FILE__ , __LINE__ , ##args); } while (0)
+#else
+#define debug(msg, args...) \
+ do { if (gnu_debug_flag) \
+        printf ("%s:%d: " msg "\r\n", \
+			    __FILE__ , __LINE__ , ##args); } while (0)
+#endif
 
 /* Create a prototype generic GNU/Hurd target.  The client can
    override it with local methods.  */
 struct target_ops *gnu_target (void);
 
+#ifdef GDBSERVER
+
+/* All info needed to access an architecture/mode's registers.  */
+
+struct regs_info
+{
+  /* Regset support bitmap: 1 for registers that are transferred as a part
+     of a regset, 0 for ones that need to be handled individually.  This
+     can be NULL if all registers are transferred with regsets or regsets
+     are not supported.  */
+  unsigned char *regset_bitmap;
+
+  /* Info used when accessing registers with PTRACE_PEEKUSER /
+     PTRACE_POKEUSER.  This can be NULL if all registers are
+     transferred with regsets  .*/
+  struct usrregs_info *usrregs;
+
+#ifdef HAVE_gnu_REGSETS
+  /* Info used when accessing registers with regsets.  */
+  struct regsets_info *regsets_info;
+#endif
+};
+
+#define ptid_of(proc) ((proc)->head.id)
+#define pid_of(proc) ptid_get_pid ((proc)->head.id)
+#define lwpid_of(proc) ptid_get_lwp ((proc)->head.id)
+
+#define get_lwp(inf) ((struct lwp_info *)(inf))
+#define get_thread_lwp(thr) (get_lwp (inferior_target_data (thr)))
+#define get_lwp_thread(proc) ((struct thread_info *)			\
+			      find_inferior_id (&all_threads,		\
+						get_lwp (proc)->head.id))
+
+#define THREAD_STATE_FLAVOR		i386_REGS_SEGS_STATE
+#define THREAD_STATE_SIZE		i386_THREAD_STATE_COUNT
+#define THREAD_STATE_SET_TRACED(state) \
+  	((struct i386_thread_state *) (state))->efl |= 0x100
+#define THREAD_STATE_CLEAR_TRACED(state) \
+  	((((struct i386_thread_state *) (state))->efl &= ~0x100), 1)
+
+
+#ifndef PIDGET
+#define PIDGET(PTID) (ptid_get_pid (PTID))
+#define TIDGET(PTID) (ptid_get_lwp (PTID))
+#define MERGEPID(PID, TID) ptid_build (PID, TID, 0)
+#endif
+//gdbserver use ptid_t not the same as gdb does!
+static ptid_t gnu_ptid_build(int pid,long lwp,long tid);
+
+//add for erase warning
+extern const char * host_address_to_string (const void *addr);
+
+/* Return printable description of proc.  */
+extern char *proc_string (struct proc *proc);
+
+
+#ifndef safe_strerror 
+#define safe_strerror(err) \
+	""
+#endif
+#endif
+
 #endif /* __GNU_NAT_H__ */
+
