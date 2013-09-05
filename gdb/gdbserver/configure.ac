@@ -457,6 +457,7 @@ if $want_ipa ; then
 fi
 
 frags=
+GDBSERVER=1
 case $host_os in
   gnu*)
     #Needed for GNU Hurd hosts.
@@ -476,10 +477,9 @@ case $host_os in
     ;;
 esac
 
-echo "host_makefile_frag=$host_makefile_frag"
-    echo "frags=$frags"
 AC_SUBST_FILE(host_makefile_frag)
 AC_SUBST(frags)
+AC_SUBST(GDBSERVER)
 
 AC_SUBST(GDBSERVER_DEPFILES)
 AC_SUBST(GDBSERVER_LIBS)

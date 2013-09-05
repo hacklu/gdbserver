@@ -198,6 +198,7 @@ CLEANDIRS = $(SUBDIRS)
 REQUIRED_SUBDIRS = $(GNULIB_BUILDDIR)
 
 # Host-dependent makefile fragment comes in here.
+GDBSERVER=@GDBSERVER@
 @host_makefile_frag@
 # End of host-dependent makefile fragment
 
