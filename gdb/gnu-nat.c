@@ -1,6 +1,7 @@
 /* Interface GDB to the GNU Hurd.
    Copyright (C) 1992-2013 Free Software Foundation, Inc.
 
+
    This file is part of GDB.
 
    Written by Miles Bader <miles@gnu.ai.mit.edu>
@@ -20,6 +21,30 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
+#ifdef GDBSERVER
+#include "server.h"
+#include "target.h"
+
+#include <limits.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
+#include "gdb_wait.h"
+#include <signal.h>
+#include <sys/ptrace.h>
+
+#include <mach.h>
+#include <mach_error.h>
+#include <mach/exception.h>
+#include <mach/message.h>
+
+#include "gnu-low.h"
+
+#include "exc_request_S.h"
+#include "notify_S.h"
+#include "process_reply_S.h"
+#include "msg_reply_S.h"
+#else
 #include "defs.h"
 
 #include <ctype.h>
@@ -73,8 +98,20 @@
 #include "msg_reply_S.h"
 #include "exc_request_U.h"
 #include "msg_U.h"
+#endif
+
 
 static process_t proc_server = MACH_PORT_NULL;
+#ifdef GDBSERVER
+/* this should move into gnu-i386-low.c ?*/
+/* Defined in auto-generated file i386.c.  */
+extern void init_registers_i386 (void);
+extern const struct target_desc *tdesc_i386;
+const struct target_desc *gnu_tdesc;
+int using_threads = 1;
+ptid_t inferior_ptid;
+static struct target_ops gnu_target_ops;
+#endif
 
 /* If we've sent a proc_wait_request to the proc server, the pid of the
    process we asked about.  We can only ever have one outstanding.  */
@@ -114,6 +151,12 @@ void inf_continue (struct inf *inf);
        debug ("{inf %d %s}: " msg, __inf->pid, \
        host_address_to_string (__inf) , ##args); } while (0)
 
+#ifdef GDBSERVER
+static ptid_t gnu_ptid_build (int pid, long lwp, long tid);
+static long gnu_get_tid (ptid_t ptid);
+static struct process_info * gnu_add_process (int pid, int attached);
+#endif
+
 void proc_abort (struct proc *proc, int force);
 struct proc *make_proc (struct inf *inf, mach_port_t port, int tid);
 struct proc *_proc_free (struct proc *proc);
@@ -145,7 +188,27 @@ int proc_trace (struct proc *proc, int set);
 	__e; }) \
    : EIEIO)
 
-
+#ifdef GDBSERVER
+struct process_info_private
+{
+  struct inf *inf;
+};
+
+void
+gnu_debug (char *string, ...)
+{
+  va_list args;
+
+  if (!gnu_debug_flag)
+    return;
+  va_start (args, string);
+  fprintf (stderr, "DEBUG(gnu): ");
+  vfprintf (stderr, string, args);
+  fprintf (stderr, "\n");
+  va_end (args);
+}
+#endif
+
 /* The state passed by an exception message.  */
 struct exc_state
   {
@@ -242,14 +305,12 @@ struct inf
     int want_exceptions;
   };
 
-
 int
 __proc_pid (struct proc *proc)
 {
   return proc->inf->pid;
 }
 
-
 /* Update PROC's real suspend count to match it's desired one.  Returns true
    if we think PROC is now in a runnable state.  */
 int
@@ -313,7 +374,6 @@ proc_update_sc (struct proc *proc)
   return running;
 }
 
-
 /* Thread_abort is called on PROC if needed.  PROC must be a thread proc.
    If PROC is deemed `precious', then nothing is done unless FORCE is true.
    In particular, a thread is precious if it's running (in which case forcing
@@ -390,7 +450,6 @@ proc_get_state (struct proc *proc, int will_modify)
     return 0;
 }
 
-
 /* Set PORT to PROC's exception port.  */
 error_t
 proc_get_exception_port (struct proc * proc, mach_port_t * port)
@@ -506,7 +565,6 @@ proc_restore_exc_port (struct proc *proc)
     }
 }
 
-
 /* Turns hardware tracing in PROC on or off when SET is true or false,
    respectively.  Returns true on success.  */
 int
@@ -533,7 +591,6 @@ proc_trace (struct proc *proc, int set)
   return 1;
 }
 
-
 /* A variable from which to assign new TIDs.  */
 static int next_thread_id = 1;
 
@@ -610,7 +667,6 @@ _proc_free (struct proc *proc)
   struct proc *next = proc->next;
 
   proc_debug (proc, "freeing...");
-
   if (proc == inf->step_thread)
     /* Turn off single stepping.  */
     inf_set_step_thread (inf, 0);
@@ -637,7 +693,6 @@ _proc_free (struct proc *proc)
   return next;
 }
 
-
 struct inf *
 make_inf (void)
 {
@@ -691,7 +746,6 @@ inf_clear_wait (struct inf *inf)
     }
 }
 
-
 void
 inf_cleanup (struct inf *inf)
 {
@@ -736,7 +790,6 @@ inf_startup (struct inf *inf, int pid)
   inf_set_pid (inf, pid);
 }
 
-
 /* Close current process, if any, and attach INF to process PORT.  */
 void
 inf_set_pid (struct inf *inf, pid_t pid)
@@ -786,7 +839,6 @@ inf_set_pid (struct inf *inf, pid_t pid)
     inf->pid = -1;
 }
 
-
 /* Validates INF's stopped, nomsg and traced field from the actual
    proc server state.  Note that the traced field is only updated from
    the proc server state if we do not have a message port.  If we do
@@ -855,6 +907,7 @@ inf_validate_task_sc (struct inf *inf)
 
   if (inf->task->cur_sc < suspend_count)
     {
+#ifndef GDBSERVER 
       int abort;
 
       target_terminal_ours ();	/* Allow I/O.  */
@@ -865,7 +918,9 @@ inf_validate_task_sc (struct inf *inf)
 
       if (abort)
 	error (_("Additional task suspend count left untouched."));
+#endif
 
+      //need fix!
       inf->task->cur_sc = suspend_count;
     }
 }
@@ -905,7 +960,6 @@ inf_set_traced (struct inf *inf, int on)
     inf->traced = on;
 }
 
-
 /* Makes all the real suspend count deltas of all the procs in INF
    match the desired values.  Careful to always do thread/task suspend
    counts in the safe order.  Returns true if at least one thread is
@@ -959,7 +1013,6 @@ inf_update_suspends (struct inf *inf)
   return 0;
 }
 
-
 /* Converts a GDB pid to a struct proc.  */
 struct proc *
 inf_tid_to_thread (struct inf *inf, int tid)
@@ -988,7 +1041,6 @@ inf_port_to_thread (struct inf *inf, mach_port_t port)
   return 0;
 }
 
-
 /* Make INF's list of threads be consistent with reality of TASK.  */
 void
 inf_validate_procs (struct inf *inf)
@@ -1056,6 +1108,12 @@ inf_validate_procs (struct inf *inf)
 	if (!left)
 	  {
 	    proc_debug (thread, "died!");
+#ifdef GDBSERVER
+	    ptid_t ptid;
+	    ptid = gnu_ptid_build (inf->pid, 0, thread->tid);
+	    if (find_thread_ptid (ptid))
+	      remove_thread (find_thread_ptid (ptid));
+#endif
 	    thread->port = MACH_PORT_NULL;
 	    thread = _proc_free (thread);	/* THREAD is dead.  */
 	    if (last)
@@ -1083,10 +1141,15 @@ inf_validate_procs (struct inf *inf)
 	    last = thread;
 	    proc_debug (thread, "new thread: %d", threads[i]);
 
+#ifndef GDBSERVER
 	    ptid = ptid_build (inf->pid, 0, thread->tid);
+#else
+	    ptid = gnu_ptid_build (inf->pid, 0, thread->tid);
+#endif
 
 	    /* Tell GDB's generic thread code.  */
 
+#ifndef GDBSERVER
 	    if (ptid_equal (inferior_ptid, pid_to_ptid (inf->pid)))
 	      /* This is the first time we're hearing about thread
 		 ids, after a fork-child.  */
@@ -1096,6 +1159,15 @@ inf_validate_procs (struct inf *inf)
 	      add_thread_silent (ptid);
 	    else
 	      add_thread (ptid);
+#else
+	    if (!find_thread_ptid (ptid))
+	      {
+		gnu_debug ("New thread, pid=%d, tid=%d\n", inf->pid,
+			   thread->tid);
+		add_thread (ptid, thread);
+		inferior_ptid = ptid;	// need fix!!!!!!!!!!!!!
+	      }
+#endif
 	  }
       }
 
@@ -1104,7 +1176,6 @@ inf_validate_procs (struct inf *inf)
   }
 }
 
-
 /* Makes sure that INF's thread list is synced with the actual process.  */
 int
 inf_update_procs (struct inf *inf)
@@ -1135,7 +1206,6 @@ inf_set_threads_resume_sc (struct inf *inf,
       thread->resume_sc = thread->pause_sc;
 }
 
-
 /* Cause INF to continue execution immediately; individual threads may still
    be suspended (but their suspend counts will be updated).  */
 void
@@ -1179,7 +1249,6 @@ inf_suspend (struct inf *inf)
   inf_update_suspends (inf);
 }
 
-
 /* INF has one thread PROC that is in single-stepping mode.  This
    function changes it to be PROC, changing any old step_thread to be
    a normal one.  A PROC of 0 clears any existing value.  */
@@ -1205,7 +1274,6 @@ inf_set_step_thread (struct inf *inf, struct proc *thread)
     }
 }
 
-
 /* Set up the thread resume_sc's so that only the signal thread is running
    (plus whatever other thread are set to always run).  Returns true if we
    did so, or false if we can't find a signal thread.  */
@@ -1221,6 +1289,7 @@ inf_set_threads_resume_sc_for_signal_thread (struct inf *inf)
     return 0;
 }
 
+#ifndef GDBSERVER
 static void
 inf_update_signal_thread (struct inf *inf)
 {
@@ -1229,7 +1298,7 @@ inf_update_signal_thread (struct inf *inf)
   inf->signal_thread = inf->threads ? inf->threads->next : 0;
 }
 
-
+#endif
 /* Detachs from INF's inferior task, letting it run once again...  */
 void
 inf_detach (struct inf *inf)
@@ -1284,7 +1353,7 @@ inf_attach (struct inf *inf, int pid)
   inf_startup (inf, pid);
 }
 
-
+#ifndef GDBSERVER
 /* Makes sure that we've got our exception ports entrenched in the process.  */
 void
 inf_steal_exc_ports (struct inf *inf)
@@ -1314,8 +1383,8 @@ inf_restore_exc_ports (struct inf *inf)
   for (thread = inf->threads; thread; thread = thread->next)
     proc_restore_exc_port (thread);
 }
+#endif
 
-
 /* Deliver signal SIG to INF.  If INF is stopped, delivering a signal, even
    signal 0, will continue it.  INF is assumed to be in a paused state, and
    the resume_sc's of INF's threads may be affected.  */
@@ -1404,7 +1473,6 @@ inf_signal (struct inf *inf, enum gdb_signal sig)
 #undef NAME
 }
 
-
 /* Continue INF without delivering a signal.  This is meant to be used
    when INF does not have a message port.  */
 void
@@ -1433,7 +1501,6 @@ inf_continue (struct inf *inf)
     warning (_("Can't continue process: %s"), safe_strerror (err));
 }
 
-
 /* The inferior used for all gdb target ops.  */
 struct inf *gnu_current_inf = 0;
 
@@ -1443,8 +1510,13 @@ struct inf *waiting_inf;
 
 /* Wait for something to happen in the inferior, returning what in STATUS.  */
 static ptid_t
+#ifdef GDBSERVER
+gnu_wait_1 (ptid_t ptid, struct target_waitstatus *status, 
+	    int target_options)
+#else
 gnu_wait (struct target_ops *ops,
 	  ptid_t ptid, struct target_waitstatus *status, int options)
+#endif
 {
   struct msg
     {
@@ -1613,19 +1685,29 @@ rewait:
 
   thread = inf->wait.thread;
   if (thread)
+#ifndef GDBSERVER
     ptid = ptid_build (inf->pid, 0, thread->tid);
+#else
+    ptid = gnu_ptid_build (inf->pid, 0, thread->tid);
+#endif
   else if (ptid_equal (ptid, minus_one_ptid))
     thread = inf_tid_to_thread (inf, -1);
   else
+#ifndef GDBSERVER
     thread = inf_tid_to_thread (inf, ptid_get_tid (ptid));
+#else
+    thread = inf_tid_to_thread (inf, gnu_get_tid (ptid));
+#endif
 
   if (!thread || thread->port == MACH_PORT_NULL)
     {
       /* TID is dead; try and find a new thread.  */
       if (inf_update_procs (inf) && inf->threads)
-	ptid = ptid_build (inf->pid, 0, inf->threads->tid); /* The first
-							       available
-							       thread.  */
+#ifndef GDBSERVER
+	ptid = ptid_build (inf->pid, 0, inf->threads->tid);
+#else
+	ptid = gnu_ptid_build (inf->pid, 0, inf->threads->tid);
+#endif /* The first available thread*/
       else
 	ptid = inferior_ptid;	/* let wait_for_inferior handle exit case */
     }
@@ -1651,10 +1733,12 @@ rewait:
 	     : "?",
 	     status->value.integer);
 
+#ifdef GDBSERVER
+  inferior_ptid = ptid;
+#endif
   return ptid;
 }
 
-
 /* The rpc handler called by exc_server.  */
 error_t
 S_exception_raise_request (mach_port_t port, mach_port_t reply_port,
@@ -1736,11 +1820,9 @@ S_exception_raise_request (mach_port_t port, mach_port_t reply_port,
       inf->wait.suppress = 1;
       mach_port_deallocate (mach_task_self (), reply_port);
     }
-
   return 0;
 }
 
-
 /* Fill in INF's wait field after a task has died without giving us more
    detailed information.  */
 void
@@ -1794,7 +1876,6 @@ do_mach_notify_dead_name (mach_port_t notify, mach_port_t dead_port)
   return 0;
 }
 
-
 static error_t
 ill_rpc (char *fun)
 {
@@ -1832,7 +1913,6 @@ do_mach_notify_send_once (mach_port_t notify)
   return ill_rpc ("do_mach_notify_send_once");
 }
 
-
 /* Process_reply server routines.  We only use process_wait_reply.  */
 
 error_t
@@ -1901,7 +1981,6 @@ S_proc_getmsgport_reply (mach_port_t reply, error_t err, mach_port_t msg_port)
   return ill_rpc ("S_proc_getmsgport_reply");
 }
 
-
 /* Msg_reply server routines.  We only use msg_sig_post_untraced_reply.  */
 
 error_t
@@ -1930,7 +2009,6 @@ S_msg_sig_post_untraced_reply (mach_port_t reply, error_t err)
     inf->stopped = 1;
   else
     inf->wait.suppress = 1;
-
   return 0;
 }
 
@@ -1940,7 +2018,6 @@ S_msg_sig_post_reply (mach_port_t reply, error_t err)
   return ill_rpc ("S_msg_sig_post_reply");
 }
 
-
 /* Returns the number of messages queued for the receive right PORT.  */
 static mach_port_msgcount_t
 port_msgs_queued (mach_port_t port)
@@ -1955,7 +2032,6 @@ port_msgs_queued (mach_port_t port)
     return status.mps_msgcount;
 }
 
-
 /* Resume execution of the inferior process.
 
    If STEP is nonzero, single-step it.
@@ -1973,8 +2049,13 @@ port_msgs_queued (mach_port_t port)
    in multiple events returned by wait).  */
 
 static void
+#ifndef GDBSERVER
 gnu_resume (struct target_ops *ops,
 	    ptid_t ptid, int step, enum gdb_signal sig)
+#else
+gnu_resume_1 (struct target_ops *ops,
+	      ptid_t ptid, int step, enum gdb_signal sig)
+#endif
 {
   struct proc *step_thread = 0;
   int resume_all;
@@ -1997,9 +2078,11 @@ gnu_resume (struct target_ops *ops,
        abort the faulting thread, which will perhaps retake it.  */
     {
       proc_abort (inf->wait.thread, 1);
+#ifndef GDBSERVER
       warning (_("Aborting %s with unforwarded exception %s."),
 	       proc_string (inf->wait.thread),
 	       gdb_signal_to_name (inf->wait.status.value.sig));
+#endif
     }
 
   if (port_msgs_queued (inf->event_port))
@@ -2022,7 +2105,12 @@ gnu_resume (struct target_ops *ops,
   else
     /* Just allow a single thread to run.  */
     {
+#ifdef GDBSERVER
+      struct proc *thread = inf_tid_to_thread (inf, gnu_get_tid (ptid));
+#else
       struct proc *thread = inf_tid_to_thread (inf, ptid_get_tid (ptid));
+#endif
+
 
       if (!thread)
 	error (_("Can't run single thread id %s: no such thread!"),
@@ -2033,7 +2121,12 @@ gnu_resume (struct target_ops *ops,
 
   if (step)
     {
+#ifdef GDBSERVER
+      step_thread = inf_tid_to_thread (inf, gnu_get_tid (ptid));
+#else
       step_thread = inf_tid_to_thread (inf, ptid_get_tid (ptid));
+#endif
+
       if (!step_thread)
 	warning (_("Can't step thread id %s: no such thread."),
 		 target_pid_to_str (ptid));
@@ -2047,7 +2140,7 @@ gnu_resume (struct target_ops *ops,
   inf_resume (inf);
 }
 
-
+#ifndef GDBSERVER
 static void
 gnu_kill_inferior (struct target_ops *ops)
 {
@@ -2061,8 +2154,29 @@ gnu_kill_inferior (struct target_ops *ops)
     }
   target_mourn_inferior ();
 }
+#else
+static int
+gnu_kill (int pid)
+{
+  struct proc *task = gnu_current_inf->task;
+  struct process_info *process;
+
+  process = find_process_pid (pid);
+
+  if (task)
+    {
+      proc_debug (task, "terminating...");
+      task_terminate (task->port);
+      inf_set_pid (gnu_current_inf, -1);
+    }
+  the_target->mourn (process);
+  return 0;
+}
+#endif
+
 
 /* Clean up after the inferior dies.  */
+#ifndef GDBSERVER
 static void
 gnu_mourn_inferior (struct target_ops *ops)
 {
@@ -2071,8 +2185,18 @@ gnu_mourn_inferior (struct target_ops *ops)
   unpush_target (ops);
   generic_mourn_inferior ();
 }
+#else
+static void
+gnu_mourn (struct process_info *process)
+{
+  /* Free our private data.  */
+  free (process->private);
+  process->private = NULL;
 
-
+  clear_inferiors ();
+}
+#endif
+
 /* Fork an inferior process, and start debugging it.  */
 
 /* Set INFERIOR_PID to the first thread available in the child, if any.  */
@@ -2095,6 +2219,7 @@ cur_inf (void)
   return gnu_current_inf;
 }
 
+#ifndef GDBSERVER
 static void
 gnu_create_inferior (struct target_ops *ops, 
 		     char *exec_file, char *allargs, char **env,
@@ -2148,10 +2273,34 @@ gnu_create_inferior (struct target_ops *ops,
   else
     inf_restore_exc_ports (inf);
 }
+#else
+static int
+gnu_create_inferior (char *program, char **allargs)
+{
+  int pid;
+  pid = fork ();
+  if (pid < 0)
+    perror_with_name ("fork");
 
-
+  if (pid == 0)
+    {
+      ptrace (PTRACE_TRACEME);
+      setpgid (0, 0);
+      execv (program, allargs);
+
+      fprintf (stderr, "Cannot exec %s: %s.\n", program, strerror (errno));
+      fflush (stderr);
+      _exit (0177);
+    }
+
+  gnu_add_process (pid, 0);
+  return pid;
+}
+#endif
+
 /* Attach to process PID, then initialize for debugging it
    and wait for the trace-trap that results from attaching.  */
+#ifndef GDBSERVER
 static void
 gnu_attach (struct target_ops *ops, char *args, int from_tty)
 {
@@ -2207,8 +2356,14 @@ gnu_attach (struct target_ops *ops, char *args, int from_tty)
   renumber_threads (0);		/* Give our threads reasonable names.  */
 #endif
 }
+#else
+static int
+gnu_attach (unsigned long pid)
+{
+  return -1;			//not support now
+}
+#endif
 
-
 /* Take a program previously attached to and detaches it.
    The program resumes execution and will no longer stop
    on signals, etc.  We'd better not have left any breakpoints
@@ -2216,6 +2371,7 @@ gnu_attach (struct target_ops *ops, char *args, int from_tty)
    to work, it may be necessary for the process to have been
    previously attached.  It *might* work if the program was
    started via fork.  */
+#ifndef GDBSERVER
 static void
 gnu_detach (struct target_ops *ops, char *args, int from_tty)
 {
@@ -2255,7 +2411,25 @@ gnu_stop (ptid_t ptid)
 {
   error (_("to_stop target function not implemented"));
 }
+#else
+static int
+gnu_detach (int pid)
+{
+  struct process_info *process;
 
+  process = find_process_pid (pid);
+  if (process == NULL)
+    return -1;
+
+  inf_detach (gnu_current_inf);
+
+  inferior_ptid = null_ptid;
+  the_target->mourn (process);
+  return 0;
+}
+#endif
+
+#ifndef GDBSERVER
 static int
 gnu_thread_alive (struct target_ops *ops, ptid_t ptid)
 {
@@ -2263,8 +2437,15 @@ gnu_thread_alive (struct target_ops *ops, ptid_t ptid)
   return !!inf_tid_to_thread (gnu_current_inf,
 			      ptid_get_tid (ptid));
 }
+#else
+static int
+gnu_thread_alive (ptid_t ptid)
+{
+  /* this function is copyed from lynx-low.c */
+  return (find_thread_ptid (ptid) != NULL);
+}
+#endif
 
-
 /* Read inferior task's LEN bytes from ADDR and copy it to MYADDR in
    gdb's address space.  Return 0 on failure; number of bytes read
    otherwise.  */
@@ -2310,7 +2491,9 @@ struct vm_region_list
   vm_size_t length;
 };
 
+#ifndef GDBSERVER
 struct obstack region_obstack;
+#endif
 
 /* Write gdb's LEN bytes from MYADDR and copy it to ADDR in inferior
    task's address space.  */
@@ -2344,7 +2527,9 @@ gnu_write_inferior (task_t task, CORE_ADDR addr, char *myaddr, int length)
 			   myaddr, length);
   CHK_GOTO_OUT ("Write to inferior faulted", err);
 
+#ifndef GDBSERVER
   obstack_init (&region_obstack);
+#endif
 
   /* Do writes atomically.
      First check for holes and unwritable memory.  */
@@ -2399,7 +2584,11 @@ gnu_write_inferior (task_t task, CORE_ADDR addr, char *myaddr, int length)
 	/* Chain the regions for later use.  */
 	region_element =
 	  (struct vm_region_list *)
+#ifndef GDBSERVER
 	  obstack_alloc (&region_obstack, sizeof (struct vm_region_list));
+#else
+	  malloc (sizeof (struct vm_region_list));
+#endif
 
 	region_element->protection = protection;
 	region_element->start = region_address;
@@ -2454,7 +2643,9 @@ gnu_write_inferior (task_t task, CORE_ADDR addr, char *myaddr, int length)
 out:
   if (deallocate)
     {
+#ifndef GDBSERVER
       obstack_free (&region_obstack, 0);
+#endif
 
       (void) vm_deallocate (mach_task_self (),
 			    copied,
@@ -2470,7 +2661,7 @@ out:
   return length;
 }
 
-
+#ifndef GDBSERVER
 /* Return 0 on failure, number of bytes handled otherwise.  TARGET
    is ignored.  */
 static int
@@ -2576,8 +2767,7 @@ gnu_find_memory_regions (find_memory_region_ftype func, void *data)
 
   return 0;
 }
-
-
+#endif
 /* Return printable description of proc.  */
 char *
 proc_string (struct proc *proc)
@@ -2592,6 +2782,7 @@ proc_string (struct proc *proc)
   return tid_str;
 }
 
+#ifndef GDBSERVER
 static char *
 gnu_pid_to_str (struct target_ops *ops, ptid_t ptid)
 {
@@ -3452,3 +3643,214 @@ flush_inferior_icache (CORE_ADDR pc, int amount)
     warning (_("Error flushing inferior's cache : %s"), safe_strerror (ret));
 }
 #endif /* FLUSH_INFERIOR_CACHE */
+
+#else
+
+static ptid_t
+gnu_ptid_build (int pid, long lwp, long tid)
+{
+  return ptid_build (pid, tid, 0);
+}
+
+static long
+gnu_get_tid (ptid_t ptid)
+{
+  return ptid_get_lwp (ptid);
+}
+
+static struct process_info *
+gnu_add_process (int pid, int attached)
+{
+  struct process_info *proc;
+
+  proc = add_process (pid, attached);
+  proc->tdesc = gnu_tdesc;
+  proc->private = xcalloc (1, sizeof (*proc->private));
+  proc->private->inf = cur_inf ();
+  struct inf *inf = gnu_current_inf;
+
+  inf_attach (inf, pid);
+  inf->pending_execs = 2;
+  inf->nomsg = 1;
+  inf->traced = 1;
+
+  inf_resume (inf);
+
+  return proc;
+}
+
+static void
+gnu_join (int pid)
+{
+  /* doesn't need */
+}
+
+static void
+gnu_resume (struct thread_resume *resume_info, size_t n)
+{
+  /* FIXME: Assume for now that n == 1.  */
+  ptid_t ptid = resume_info[0].thread;
+  const int step = (resume_info[0].kind == resume_step ? 1 : 0);	//1 means step, 0 means contiune
+  const int signal = resume_info[0].sig;
+  if (ptid_equal (ptid, minus_one_ptid))
+    ptid = thread_to_gdb_id (current_inferior);
+
+  regcache_invalidate ();
+
+  gnu_debug ("in gnu_resume: ptid=%d, step=%d, signal=%d\n", ptid, step,
+	     signal);
+
+  /*my_resume(); */
+  /*static void gnu_resume_1 (struct target_ops *ops,ptid_t ptid, int step, enum gdb_signal sig) */
+  gnu_resume_1 (NULL, ptid, step, signal);
+
+}
+
+static ptid_t
+gnu_wait (ptid_t ptid, struct target_waitstatus *status, int target_options)
+{
+  ptid_t event_ptid;
+  gnu_debug ("gnu_wait: [%s]", target_pid_to_str (ptid));
+  event_ptid = gnu_wait_1 (ptid, status, target_options);
+  gnu_debug ("          -> (status->kind = %d)\n", status->kind);
+  return event_ptid;
+}
+
+void
+gnu_fetch_registers_wrap (struct regcache *regcache, int regno)
+{
+  gnu_debug ("gnu_fetch_registers() regno=%d\n", regno);
+  return gnu_fetch_registers (NULL, regcache, regno);
+}
+
+void
+gnu_store_registers_wrap (struct regcache *regcache, int regno)
+{
+  gnu_debug ("gnu_store_registers() regno=%d\n", regno);
+  return gnu_store_registers (NULL, regcache, regno);
+}
+
+static int
+gnu_read_memory (CORE_ADDR addr, unsigned char *myaddr, int length)
+{
+  int ret = 0;
+  task_t task = (gnu_current_inf
+		 ? (gnu_current_inf->task
+		    ? gnu_current_inf->task->port : 0) : 0);
+  if (task == MACH_PORT_NULL)
+    return 0;
+  ret = gnu_read_inferior (task, addr, myaddr, length);
+  if (length != ret)
+    {
+      gnu_debug ("gnu_read_inferior,length=%d, but return %d\n", length, ret);
+      return -1;
+    }
+  return 0;
+}
+
+static int
+gnu_write_memory (CORE_ADDR addr, const unsigned char *myaddr, int length)
+{
+  int ret = 0;
+  task_t task = (gnu_current_inf
+		 ? (gnu_current_inf->task
+		    ? gnu_current_inf->task->port : 0) : 0);
+  if (task == MACH_PORT_NULL)
+    return 0;
+  ret = gnu_write_inferior (task, addr, myaddr, length);
+  if (length != ret)
+    {
+      gnu_debug ("gnu_write_inferior,length=%d, but return %d\n", length,
+		 ret);
+      return -1;
+    }
+  return 0;
+}
+
+static void
+gnu_request_interrupt (void)
+{
+  printf ("gnu_request_interrupt not support!\n");
+  exit (-1);
+}
+
+/* Helper function for child_wait and the derivatives of child_wait.
+   HOSTSTATUS is the waitstatus from wait() or the equivalent; store our
+   translation of that in OURSTATUS.  */
+void
+store_waitstatus (struct target_waitstatus *ourstatus, int hoststatus)
+{
+  if (WIFEXITED (hoststatus))
+    {
+      ourstatus->kind = TARGET_WAITKIND_EXITED;
+      ourstatus->value.integer = WEXITSTATUS (hoststatus);
+    }
+  else if (!WIFSTOPPED (hoststatus))
+    {
+      ourstatus->kind = TARGET_WAITKIND_SIGNALLED;
+      ourstatus->value.sig = gdb_signal_from_host (WTERMSIG (hoststatus));
+    }
+  else
+    {
+      ourstatus->kind = TARGET_WAITKIND_STOPPED;
+      ourstatus->value.sig = gdb_signal_from_host (WSTOPSIG (hoststatus));
+    }
+}
+
+static struct target_ops gnu_target_ops = {
+  gnu_create_inferior,
+  gnu_attach,
+  gnu_kill,
+  gnu_detach,
+  gnu_mourn,
+  gnu_join,
+  gnu_thread_alive,
+  gnu_resume,
+  gnu_wait,
+  gnu_fetch_registers_wrap,
+  gnu_store_registers_wrap,
+  NULL,				/* prepare_to_access_memory */
+  NULL,				/* done_accessing_memory */
+  gnu_read_memory,
+  gnu_write_memory,
+  NULL,				/* look_up_symbols */
+  gnu_request_interrupt,
+  NULL,				/* read_auxv */
+  NULL,				/* insert_point */
+  NULL,				/* remove_point */
+  NULL,				/* stopped_by_watchpoint */
+  NULL,				/* stopped_data_address */
+  NULL,				/* read_offsets */
+  NULL,				/* get_tls_address */
+  NULL,				/* qxfer_spu */
+  NULL,				/* hostio_last_error */
+  NULL,				/* qxfer_osdata */
+  NULL,				/* qxfer_siginfo */
+  NULL,				/* supports_non_stop */
+  NULL,				/* async */
+  NULL,				/* start_non_stop */
+  NULL,				/* supports_multi_process */
+  NULL,				/* handle_monitor_command */
+};
+
+void
+_initialize_gnu_nat (void)
+{
+  proc_server = getproc ();
+}
+
+static void
+initialize_low_arch ()
+{
+  init_registers_i386 ();
+  gnu_tdesc = tdesc_i386;
+}
+
+void
+initialize_low (void)
+{
+  set_target_ops (&gnu_target_ops);
+  initialize_low_arch ();
+  _initialize_gnu_nat ();
+}
+#endif

@@ -17,6 +17,7 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
+#ifndef GDBSERVER
 #include "defs.h"
 #include "inferior.h"
 #include "floatformat.h"
@@ -27,10 +28,6 @@
 #include <stdio.h>
 #include "gdb_string.h"
 
-#include <mach.h>
-#include <mach_error.h>
-#include <mach/message.h>
-#include <mach/exception.h>
 
 #include "i386-tdep.h"
 
@@ -41,6 +38,24 @@
 # include <sys/procfs.h>
 # include "gregset.h"
 #endif
+#else
+#include "gnu-low.h"
+
+#include <limits.h>
+#include <sys/ptrace.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
+#include "gdb_wait.h"
+#include <signal.h>
+
+#define I386_NUM_GREGS	16
+#endif
+
+#include <mach.h>
+#include <mach_error.h>
+#include <mach/message.h>
+#include <mach/exception.h>
 
 /* Offset to the thread_state_t location where REG is stored.  */
 #define REG_OFFSET(reg) offsetof (struct i386_thread_state, reg)
@@ -78,6 +93,7 @@ static int creg_offset[] =
 static void
 fetch_fpregs (struct regcache *regcache, struct proc *thread)
 {
+#ifndef GDBSERVER
   mach_msg_type_number_t count = i386_FLOAT_STATE_COUNT;
   struct i386_float_state state;
   error_t err;
@@ -101,8 +117,12 @@ fetch_fpregs (struct regcache *regcache, struct proc *thread)
       /* Supply the floating-point registers.  */
       i387_supply_fsave (regcache, -1, state.hw_state);
     }
+#else
+  gnu_debug ("fetch_fpregs() not support now\n");
+#endif
 }
 
+#ifndef GDBSERVER
 #ifdef HAVE_SYS_PROCFS_H
 /* These two calls are used by the core-regset.c code for
    reading ELF core files.  */
@@ -120,9 +140,15 @@ supply_fpregset (struct regcache *regcache, const gdb_fpregset_t *fpregs)
   i387_supply_fsave (regcache, -1, fpregs);
 }
 #endif
+#endif
 
+extern struct inf *gnu_current_inf; extern ptid_t inferior_ptid;
 /* Fetch register REGNO, or all regs if REGNO is -1.  */
+#ifndef GDBSERVER
 static void
+#else
+void
+#endif
 gnu_fetch_registers (struct target_ops *ops,
 		     struct regcache *regcache, int regno)
 {
@@ -132,7 +158,11 @@ gnu_fetch_registers (struct target_ops *ops,
   inf_update_procs (gnu_current_inf);
 
   thread = inf_tid_to_thread (gnu_current_inf,
+#ifndef GDBSERVER
 			      ptid_get_tid (inferior_ptid));
+#else
+			      TIDGET (inferior_ptid));
+#endif
   if (!thread)
     error (_("Can't fetch registers from thread %s: No such thread"),
 	   target_pid_to_str (inferior_ptid));
@@ -157,17 +187,25 @@ gnu_fetch_registers (struct target_ops *ops,
 	  proc_debug (thread, "fetching all register");
 
 	  for (i = 0; i < I386_NUM_GREGS; i++)
+#ifndef GDBSERVER
 	    regcache_raw_supply (regcache, i, REG_ADDR (state, i));
+#else
+	    supply_register (regcache, i, REG_ADDR (state, i));
+#endif
 	  thread->fetched_regs = ~0;
 	}
       else
 	{
+#ifndef GDBSERVER
 	  proc_debug (thread, "fetching register %s",
 		      gdbarch_register_name (get_regcache_arch (regcache),
 					     regno));
 
 	  regcache_raw_supply (regcache, regno,
 			       REG_ADDR (state, regno));
+#else
+	  supply_register (regcache, regno, REG_ADDR (state, regno));
+#endif
 	  thread->fetched_regs |= (1 << regno);
 	}
     }
@@ -183,9 +221,14 @@ gnu_fetch_registers (struct target_ops *ops,
 
 /* Store the whole floating-point state into THREAD using information
    from the corresponding (pseudo) registers.  */
+#ifndef GDBSERVER
 static void
+#else
+void
+#endif
 store_fpregs (const struct regcache *regcache, struct proc *thread, int regno)
 {
+#ifndef GDBSERVER
   mach_msg_type_number_t count = i386_FLOAT_STATE_COUNT;
   struct i386_float_state state;
   error_t err;
@@ -211,21 +254,36 @@ store_fpregs (const struct regcache *regcache, struct proc *thread, int regno)
 	       proc_string (thread));
       return;
     }
+#else
+  gnu_debug ("store_fpregs() not support now\n");
+#endif
 }
 
 /* Store at least register REGNO, or all regs if REGNO == -1.  */
+#ifndef GDBSERVER
 static void
+#else
+void
+#endif
 gnu_store_registers (struct target_ops *ops,
 		     struct regcache *regcache, int regno)
 {
   struct proc *thread;
+#ifndef GDBSERVER
   struct gdbarch *gdbarch = get_regcache_arch (regcache);
+#else
+  const struct target_desc *gdbarch = regcache->tdesc;
+#endif
 
   /* Make sure we know about new threads.  */
   inf_update_procs (gnu_current_inf);
 
   thread = inf_tid_to_thread (gnu_current_inf,
+#ifndef GDBSERVER
 			      ptid_get_tid (inferior_ptid));
+#else
+		  	      TIDGET (inferior_ptid));
+#endif
   if (!thread)
     error (_("Couldn't store registers into thread %s: No such thread"),
 	   target_pid_to_str (inferior_ptid));
@@ -265,12 +323,19 @@ gnu_store_registers (struct target_ops *ops,
 			   register_size (gdbarch, check_regno)))
 	      /* Register CHECK_REGNO has changed!  Ack!  */
 	      {
+#ifndef GDBSERVER
 		warning (_("Register %s changed after the thread was aborted"),
 			 gdbarch_register_name (gdbarch, check_regno));
+#endif
 		if (regno >= 0 && regno != check_regno)
 		  /* Update GDB's copy of the register.  */
+#ifndef GDBSERVER
 		  regcache_raw_supply (regcache, check_regno,
 				       REG_ADDR (state, check_regno));
+#else
+		  supply_register (regcache, check_regno,
+				   REG_ADDR (state, check_regno));
+#endif
 		else
 		  warning (_("... also writing this register!  "
 			     "Suspicious..."));
@@ -284,16 +349,24 @@ gnu_store_registers (struct target_ops *ops,
 	  proc_debug (thread, "storing all registers");
 
 	  for (i = 0; i < I386_NUM_GREGS; i++)
+#ifndef GDBSERVER
 	    if (REG_VALID == regcache_register_status (regcache, i))
 	      regcache_raw_collect (regcache, i, REG_ADDR (state, i));
+#else
+	    collect_register (regcache, i, REG_ADDR (state, i));
+#endif
 	}
       else
 	{
+#ifndef GDBSERVER
 	  proc_debug (thread, "storing register %s",
 		      gdbarch_register_name (gdbarch, regno));
 
 	  gdb_assert (REG_VALID == regcache_register_status (regcache, regno));
 	  regcache_raw_collect (regcache, regno, REG_ADDR (state, regno));
+#else
+	  collect_register (regcache, regno, REG_ADDR (state, regno));
+#endif
 	}
 
       /* Restore the T bit.  */
@@ -309,6 +382,7 @@ gnu_store_registers (struct target_ops *ops,
     }
 }
 
+#ifndef GDBSERVER
 /* Provide a prototype to silence -Wmissing-prototypes.  */
 extern initialize_file_ftype _initialize_i386gnu_nat;
 
@@ -326,3 +400,4 @@ _initialize_i386gnu_nat (void)
   /* Register the target.  */
   add_target (t);
 }
+#endif
